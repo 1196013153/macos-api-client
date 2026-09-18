@@ -1,8 +1,16 @@
 # API Client（macOS 原生版）
 
-类 Apifox 的接口管理与调试工具，macOS 原生应用。**多项目隔离 · 跨项目多标签 · 多环境变量 · 保序 JSON 响应查看**。
+接口管理与调试工具，macOS 原生应用。**多项目隔离 · 跨项目多标签 · 多环境变量 · 保序 JSON 响应查看**。
 
 纯 Swift + SwiftUI 实现，单个 4.5 MB 二进制，不依赖 Electron / Node 运行时。
+
+### 相比 Apifox / Postman 这类 Electron 客户端
+
+- **省内存**：Electron 客户端启动即占数百 MB，多开几个标签更是水涨船高；本应用加载 9 个项目 / 2500+ 接口的工作区，常驻内存约 120 MB。
+- **更流畅**：SwiftUI 原生列表与文本视图，没有 WebView 一层的渲染开销——侧边栏几千个接口秒开，切标签、切项目、切环境都是即时响应，长 JSON 响应保序高亮不卡顿。
+- **启动即用**：4.5 MB 二进制冷启动不到一秒，没有登录墙、没有云同步弹窗、没有更新提示。
+- **数据本地可读**：项目与请求都是 JSON 文件，拷目录即迁移，可以放进任意版本控制或同步盘。
+- **零依赖可自检**：核心逻辑不依赖 SwiftUI，276 项自检只需 Command Line Tools 即可运行。
 
 ![界面](docs/screenshot-light.png)
 
@@ -47,7 +55,7 @@ swift run APIClient --self-check
 
 ### 导入参考项目的工作区
 
-把 uTools 版导出的 `wac-workspace.json` 一次性导入（多项目、自动按 Controller 分目录）：
+把已有的 `wac-workspace.json` 工作区一次性导入（多项目、自动按 Controller 分目录）：
 
 ```bash
 swift run APIClient --import ../wac-workspace.json
