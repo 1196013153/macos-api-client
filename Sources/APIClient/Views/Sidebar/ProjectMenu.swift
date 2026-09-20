@@ -59,20 +59,6 @@ struct ProjectMenu: View {
                 guard let url = FileDialogs.openJSON(message: "选择 wac 工作区文件（多项目）或单个项目 JSON") else { return }
                 store.importProjects(from: url)
             }
-            action(title: "绑定 Java 项目并同步…", symbol: "arrow.triangle.2.circlepath") {
-                guard let id = store.activeProjectID else { return }
-                onDismiss()
-                guard let url = FileDialogs.openDirectory(message: "选择 Java / Spring 项目根目录") else { return }
-                Task { await store.syncJavaInterfaces(projectID: id, folderURL: url) }
-            }
-            .disabled(store.activeProjectID == nil)
-            action(title: "同步 Java 接口", symbol: "arrow.clockwise") {
-                guard let project = store.activeProject, let path = project.javaSyncFolderPath else { return }
-                onDismiss()
-                Task { await store.syncJavaInterfaces(projectID: project.id, folderURL: URL(fileURLWithPath: path)) }
-            }
-            .disabled(store.activeProject?.javaSyncFolderPath == nil)
-
             divider
 
             action(title: "导出当前项目…", symbol: "square.and.arrow.up") {

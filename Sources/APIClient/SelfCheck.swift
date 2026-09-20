@@ -1400,9 +1400,35 @@ enum SelfCheck {
         """
         try? controller.write(to: controllerURL, atomically: true, encoding: .utf8)
 
+        let requestType = """
+        package com.example;
+
+        public class GoodsDetailRequest {
+            private String itemId;
+            private String shopType;
+        }
+        """
+        let requestTypeURL = sourceDirectory.appendingPathComponent("GoodsDetailRequest.java")
+        try? requestType.write(to: requestTypeURL, atomically: true, encoding: .utf8)
+
+        let goodsController = """
+        package com.example;
+
+        @RestController
+        @RequestMapping("/goods")
+        public class GoodsController {
+            @GetMapping("/detail")
+            public String detail(GoodsDetailRequest request) {
+                return "ok";
+            }
+        }
+        """
+        let goodsControllerURL = sourceDirectory.appendingPathComponent("GoodsController.java")
+        try? goodsController.write(to: goodsControllerURL, atomically: true, encoding: .utf8)
+
         do {
             let interfaces = try JavaProjectScanner.scan(at: rootURL)
-            expectEqual("扫描 Controller 方法数", interfaces.count, 2)
+            expectEqual("扫描 Controller 方法数", interfaces.count, 3)
             let getter = interfaces.first { $0.name == "get" }
             expectEqual("读取 GET 地址", getter?.url, "/api/accounts/{id}")
             expectEqual("读取请求方法", getter?.method, .get)
@@ -1411,13 +1437,19 @@ enum SelfCheck {
             check("请求头参数", getter?.headers.contains { $0.key == "X-Tenant" } == true)
             expectEqual("请求体类型", getter?.body.kind, .json)
 
+            let goodsDetail = interfaces.first { $0.name == "detail" }
+            expectEqual("读取 POJO 请求地址", goodsDetail?.url, "/goods/detail")
+            check("展开 GET POJO 字段", goodsDetail?.params.contains { $0.key == "itemId" && $0.location == .query } == true)
+            check("展开 GET POJO 第二字段", goodsDetail?.params.contains { $0.key == "shopType" && $0.location == .query } == true)
+            check("不再保留 request 占位参数", goodsDetail?.params.contains { $0.key == "request" } == false)
+
             let app = AppStore(storage: PersistenceStore(root: root.appendingPathComponent("java-store")))
             let project = app.createProject(name: "Java 项目")
             let manual = APIRequest(name: "手工接口", method: .get, url: "/manual")
             app.updateProject(id: project.id) { $0.insert(manual, intoFolder: nil) }
             await app.syncJavaInterfaces(projectID: project.id, folderURL: rootURL)
             let synced = app.project(id: project.id)
-            expectEqual("同步后接口数量", synced?.requests.count, 3)
+            expectEqual("同步后接口数量", synced?.requests.count, 4)
             let first = synced?.requests.first { $0.sourceKey?.contains("get") == true }
             check("同步 Controller 目录", synced?.collection.contains { $0.kind == .folder && $0.name == "AccountController" } == true)
             check("手工接口保留", synced?.requests.contains { $0.name == "手工接口" } == true)
@@ -1427,11 +1459,65 @@ enum SelfCheck {
             try updatedController.write(to: controllerURL, atomically: true, encoding: .utf8)
             await app.syncJavaInterfaces(projectID: project.id, folderURL: rootURL)
             let refreshed = app.project(id: project.id)
-            expectEqual("二次同步接口数量", refreshed?.requests.count, 3)
+            expectEqual("二次同步接口数量", refreshed?.requests.count, 4)
             expectEqual("同一接口复用请求 id", refreshed?.requests.first { $0.sourceKey?.contains("get") == true }?.id, first?.id)
             expectEqual("地址按源码更新", refreshed?.requests.first { $0.sourceKey?.contains("get") == true }?.url, "/api/accounts/v2/{id}")
             check("记录绑定路径", refreshed?.javaSyncFolderPath == rootURL.path)
             check("记录同步时间", refreshed?.javaSyncedAt != nil)
+
+            // 从别的工具导入的接口没有 sourceKey，只有 `Java: 类.方法` 备注。
+            // 重新扫描时应该认领并原地更新它，而不是再生成一份同名接口；
+            // 上一次同步已经生成的那份重复项则合并掉，打开的标签跟着改指。
+            let importedProject = app.createProject(name: "导入后同步")
+            let imported = APIRequest(
+                name: "商品详情",
+                method: .get,
+                url: "/goods/detail",
+                params: [KeyValueItem(key: "request")],
+                note: "商品详情\nJava: GoodsController.detail"
+            )
+            let generatedDuplicate = APIRequest(
+                name: "detail",
+                method: .get,
+                url: "/goods/detail",
+                params: [KeyValueItem(key: "request")],
+                sourceKey: "src/main/java/com/example/GoodsController.java#GoodsController#detail"
+            )
+            app.updateProject(id: importedProject.id) { project in
+                project.requests = [imported, generatedDuplicate]
+                project.collection = [
+                    CollectionNode.folder(name: "GoodsController", children: [
+                        CollectionNode.request(id: imported.id, name: imported.name),
+                        CollectionNode.request(id: generatedDuplicate.id, name: generatedDuplicate.name)
+                    ])
+                ]
+            }
+            app.openRequest(projectID: importedProject.id, requestID: generatedDuplicate.id)
+            await app.syncJavaInterfaces(projectID: importedProject.id, folderURL: rootURL)
+
+            let mergedProject = app.project(id: importedProject.id)
+            let adopted = mergedProject?.request(id: imported.id)
+            check("导入的接口原地更新", adopted?.params.contains { $0.key == "itemId" && $0.location == .query } == true)
+            check("导入的接口保留名字", adopted?.name == "商品详情")
+            check("导入的接口补上来源标记", adopted?.sourceKey?.hasSuffix("#GoodsController#detail") == true)
+            check("原有业务说明保留", adopted?.note.hasPrefix("商品详情\nJava: GoodsController.detail") == true)
+            check("重复的同步接口被合并", mergedProject?.requests.contains { $0.id == generatedDuplicate.id } == false)
+            check("合并后接口数量正确", mergedProject?.requests.count == 3)
+            check("集合树不再有重复节点", mergedProject?.collection.containedRequestIDs().count == 3)
+            check("标签改指保留下来的接口", app.sessions.contains { $0.requestID == imported.id })
+            check(
+                "重新扫描后标签参数立即刷新",
+                app.sessions.first { $0.requestID == imported.id }?.buffer.params.contains { $0.key == "itemId" } == true
+            )
+
+            await app.syncJavaInterfaces(projectID: importedProject.id, folderURL: rootURL)
+            let resynced = app.project(id: importedProject.id)
+            check("再次同步不重复生成", resynced?.requests.count == 3)
+            check(
+                "再次同步说明不叠加",
+                resynced?.request(id: imported.id)?.note
+                    == "商品详情\nJava: GoodsController.detail\n文件: src/main/java/com/example/GoodsController.java"
+            )
         } catch {
             check("扫描 Java Controller", false, detail: error.localizedDescription)
         }

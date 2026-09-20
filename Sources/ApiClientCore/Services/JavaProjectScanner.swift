@@ -34,6 +34,18 @@ public enum JavaProjectScannerError: LocalizedError {
 /// 目标是同步本机当前工程，而不是替代编译器。
 public enum JavaProjectScanner {
 
+    private struct JavaSource {
+        var file: URL
+        var raw: String
+        var source: String
+    }
+
+    private struct JavaType {
+        var name: String
+        var superclass: String?
+        var body: String
+    }
+
     public static func scan(at root: URL) throws -> [JavaInterface] {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory),
@@ -42,7 +54,12 @@ public enum JavaProjectScanner {
         }
 
         let files = javaFiles(in: root).sorted { $0.path < $1.path }
-        let interfaces = files.flatMap { parse(file: $0, root: root) }
+        let sources = files.compactMap { file -> JavaSource? in
+            guard let raw = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+            return JavaSource(file: file, raw: raw, source: stripComments(raw))
+        }
+        let types = javaTypes(in: sources)
+        let interfaces = sources.flatMap { parse(file: $0.file, source: $0.source, root: root, types: types) }
         guard !interfaces.isEmpty else { throw JavaProjectScannerError.noInterfaces }
         return interfaces
     }
@@ -72,9 +89,7 @@ public enum JavaProjectScanner {
         return result
     }
 
-    private static func parse(file: URL, root: URL) -> [JavaInterface] {
-        guard let raw = try? String(contentsOf: file, encoding: .utf8) else { return [] }
-        let source = stripComments(raw)
+    private static func parse(file: URL, source: String, root: URL, types: [String: [JavaType]]) -> [JavaInterface] {
         let classMatches = matches(in: source, pattern: #"\bclass\s+(\w+)"#)
         guard let classMatch = classMatches.first else { return [] }
 
@@ -109,15 +124,15 @@ public enum JavaProjectScanner {
                 ? String(filePath.dropFirst(rootPath.count + 1))
                 : file.lastPathComponent
             let sourceKey = "\(relativePath)#\(className)#\(signature.name)"
-            let interfaces1 = interface(
+            interfaces.append(interface(
                 className: className,
                 classBasePath: classBasePath,
                 annotation: mapping.annotation,
                 signature: signature,
                 sourceKey: sourceKey,
-                relativePath: relativePath
-            )
-            interfaces.append(interfaces1)
+                relativePath: relativePath,
+                types: types
+            ))
         }
         return interfaces
     }
@@ -128,7 +143,8 @@ public enum JavaProjectScanner {
         annotation: Annotation,
         signature: MethodSignature,
         sourceKey: String,
-        relativePath: String
+        relativePath: String,
+        types: [String: [JavaType]]
     ) -> JavaInterface {
         var params: [KeyValueItem] = []
         var headers: [KeyValueItem] = []
@@ -144,6 +160,9 @@ public enum JavaProjectScanner {
                 headers.append(KeyValueItem(key: parameter.name, value: "", note: "请求头"))
             } else if parameter.has("RequestBody") {
                 hasRequestBody = true
+            } else if annotation.httpMethod == .get,
+                      let fields = queryFields(for: parameter.typeName, in: types) {
+                params.append(contentsOf: fields)
             }
         }
 
@@ -169,6 +188,85 @@ public enum JavaProjectScanner {
         )
     }
 
+    // MARK: - 请求对象字段
+
+    /// Spring GET 接口允许用 POJO 接收查询参数。这里按类名索引 Java 源码，
+    /// 展开 request 对象里的实例字段，避免接口列表里只留下一个 `request` 参数。
+    private static func javaTypes(in sources: [JavaSource]) -> [String: [JavaType]] {
+        var result: [String: [JavaType]] = [:]
+        for source in sources {
+            let classMatches = matches(
+                in: source.source,
+                pattern: #"\bclass\s+(\w+)(?:\s+extends\s+([\w.]+))?"#
+            )
+            for match in classMatches {
+                guard let nameRange = match[1],
+                      let braceRange = source.source.range(
+                        of: "{",
+                        range: match.range.upperBound..<source.source.endIndex
+                      ) else { continue }
+
+                var depth = 1
+                var index = source.source.index(after: braceRange.upperBound)
+                var closeIndex = source.source.endIndex
+                while index < source.source.endIndex {
+                    let character = source.source[index]
+                    if character == "{" { depth += 1 }
+                    if character == "}" {
+                        depth -= 1
+                        if depth == 0 {
+                            closeIndex = index
+                            break
+                        }
+                    }
+                    index = source.source.index(after: index)
+                }
+
+                let name = String(source.source[nameRange])
+                let type = JavaType(
+                    name: name,
+                    superclass: match[2].map { String(source.source[$0]) },
+                    body: String(source.source[braceRange.upperBound..<closeIndex])
+                )
+                result[name, default: []].append(type)
+            }
+        }
+        return result
+    }
+
+    private static func queryFields(
+        for typeName: String,
+        in types: [String: [JavaType]],
+        visited: Set<String> = []
+    ) -> [KeyValueItem]? {
+        let simpleName = typeName.split(separator: ".").last.map(String.init) ?? typeName
+        guard !visited.contains(simpleName),
+              let definitions = types[simpleName],
+              definitions.count == 1,
+              let type = definitions.first else { return nil }
+
+        var fields = javaFields(in: type.body)
+        var nextVisited = visited
+        nextVisited.insert(simpleName)
+        if let superclass = type.superclass?.split(separator: ".").last.map(String.init),
+           let superclassFields = queryFields(for: superclass, in: types, visited: nextVisited) {
+            let known = Set(fields.map(\.key))
+            fields.append(contentsOf: superclassFields.filter { !known.contains($0.key) })
+        }
+
+        guard !fields.isEmpty else { return nil }
+        return fields
+    }
+
+    private static func javaFields(in typeBody: String) -> [KeyValueItem] {
+        let pattern = #"(?m)^\s*(?:private|protected|public)\s+(?!static\b)(?:final\s+)?(?:transient\s+)?(?:volatile\s+)?[\w$][\w$.<>\[\], ?]*\s+([\w$]+)\s*(?:=[^;]*)?;"#
+        return matches(in: typeBody, pattern: pattern).compactMap { match in
+            guard let range = match[1] else { return nil }
+            let name = String(typeBody[range])
+            return KeyValueItem(key: name, value: "", note: "请求对象字段", location: .query)
+        }
+    }
+
     // MARK: - 注解 / 方法签名
 
     private struct Annotation {
@@ -186,6 +284,16 @@ public enum JavaProjectScanner {
     private struct Parameter {
         var annotations: String
         var declaration: String
+
+        var typeName: String {
+            let clean = declaration
+                .replacingOccurrences(of: "<[^>]*>", with: " ", options: .regularExpression)
+                .replacingOccurrences(of: "[", with: " ").replacingOccurrences(of: "]", with: " ")
+            return clean
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "_" && $0 != "." })
+                .first
+                .map(String.init) ?? ""
+        }
 
         var name: String {
             if let explicit = firstString(in: annotations) { return explicit }

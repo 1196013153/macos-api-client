@@ -87,6 +87,26 @@ struct RootView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
+                guard let id = store.activeProjectID,
+                      let url = FileDialogs.openDirectory(message: "选择 Java / Spring 项目根目录") else { return }
+                Task { await store.syncJavaInterfaces(projectID: id, folderURL: url) }
+            } label: {
+                AppIcon(symbol: "folder.badge.plus", size: 13, tint: DS.color.textSecondary)
+            }
+            .help("绑定 Java 项目并同步接口")
+            .disabled(store.activeProjectID == nil)
+
+            Button {
+                guard let project = store.activeProject,
+                      let path = project.javaSyncFolderPath else { return }
+                Task { await store.syncJavaInterfaces(projectID: project.id, folderURL: URL(fileURLWithPath: path)) }
+            } label: {
+                AppIcon(symbol: "arrow.clockwise", size: 13, tint: DS.color.textSecondary)
+            }
+            .help("重新同步 Java 项目接口")
+            .disabled(store.activeProject?.javaSyncFolderPath == nil)
+
+            Button {
                 if let id = store.activeProjectID {
                     ui.sheet = .requestDetail(id)
                 }

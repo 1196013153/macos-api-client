@@ -59,7 +59,7 @@ swift run APIClient --self-check
 `@RequestMapping`、`@GetMapping`、`@PostMapping`、`@PutMapping`、`@PatchMapping`、`@DeleteMapping`，
 生成可调试接口。同步按 Controller 分目录，并保留手工接口、Mock、收藏与请求 id。
 
-- 入口：侧边栏项目菜单 → 「绑定 Java 项目并同步…」；已绑定后可用「同步 Java 接口」重新扫描
+- 入口：右上角工具栏；未绑定时点「绑定」图标，已绑定后点「刷新」图标重新扫描
 - 识别路径、HTTP 方法、`@PathVariable`、`@RequestParam`、`@RequestHeader`、`@RequestBody`
 - 忽略 `build` / `target` / `.git` 等目录，按 `文件#类#方法` 匹配，源码变化时复用请求 id
 
