@@ -359,7 +359,7 @@ struct ResponsePanelView: View {
                     .id("\(session.id)-\(stateKey)")
                     .transition(.opacity)
             case .raw:
-                rawText(payload.text ?? "", language: .json)
+                rawText(formattedRawText(payload), language: .json)
             }
         } else if let text = payload.text {
             rawText(text, language: .plain)
@@ -370,6 +370,11 @@ struct ResponsePanelView: View {
                 subtitle: "共 \(payload.sizeText)，可在「请求详情」复制 cURL 用终端排查"
             )
         }
+    }
+
+    /// 原文模式下的展示文本：JSON 保序格式化，其他内容按服务端原文展示。
+    private func formattedRawText(_ payload: HTTPResponsePayload) -> String {
+        payload.jsonValue?.prettyPrinted() ?? (payload.text ?? "")
     }
 
     /// 原文视图：用只读的代码编辑器，JSON 会带高亮；横向滚动交给 NSTextView，不折行。

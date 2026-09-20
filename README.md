@@ -45,13 +45,23 @@ open "dist/API Client.app"
 
 > 只需要 Xcode Command Line Tools，**不需要完整 Xcode**。`.app` 由 `Scripts/build-app.sh` 手工组装 Info.plist 与图标。
 
-### 自检（276 项）
+### 自检（341 项）
 
 ```bash
 swift run APIClient --self-check
 ```
 
-覆盖变量解析、请求编排、JSON 解析、Mock 生成、form-data 与文件上传（multipart 逐字节）、编辑器定位与 JSON 高亮、项目模型、持久化往返、收藏置顶、接口搜索评分、按项目隔离的两级标签语义、工作区导入。不依赖 XCTest——零依赖才能在只有 Command Line Tools 的环境里跑（本机即如此）。
+覆盖 Java Controller 接口同步、变量解析、请求编排、JSON 解析、Mock 生成、form-data 与文件上传（multipart 逐字节）、编辑器定位与 JSON 高亮、项目模型、持久化往返、收藏置顶、接口搜索评分、按项目隔离的两级标签语义、工作区导入。不依赖 XCTest——零依赖才能在只有 Command Line Tools 的环境里跑（本机即如此）。
+
+### 同步 Java 项目接口
+
+给项目绑定一个 Java / Spring 工程根目录后，可以扫描 `@RestController/@Controller` 里的
+`@RequestMapping`、`@GetMapping`、`@PostMapping`、`@PutMapping`、`@PatchMapping`、`@DeleteMapping`，
+生成可调试接口。同步按 Controller 分目录，并保留手工接口、Mock、收藏与请求 id。
+
+- 入口：侧边栏项目菜单 → 「绑定 Java 项目并同步…」；已绑定后可用「同步 Java 接口」重新扫描
+- 识别路径、HTTP 方法、`@PathVariable`、`@RequestParam`、`@RequestHeader`、`@RequestBody`
+- 忽略 `build` / `target` / `.git` 等目录，按 `文件#类#方法` 匹配，源码变化时复用请求 id
 
 ### 导入参考项目的工作区
 

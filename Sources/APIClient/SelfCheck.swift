@@ -37,6 +37,7 @@ enum SelfCheck {
         checkRequestSearch()
         await checkProjectsAndTabs()
         checkWorkspaceImport()
+        await checkJavaSync()
 
         print(String(repeating: "─", count: 60))
         if failed == 0 {
@@ -1365,6 +1366,75 @@ enum SelfCheck {
         late.appendStream(chunk: Data(), events: rich, elapsed: 3)
         session.receiveStream(late)
         expectEqual("停止后迟到的快照被忽略", session.response?.stream?.events.count, 1)
+    }
+
+    // MARK: - Java 项目接口同步
+
+    private static func checkJavaSync() async {
+        section("Java 项目接口同步")
+
+        guard let root = sandbox else { return }
+        let rootURL = root.appendingPathComponent("java-project")
+        let sourceDirectory = rootURL.appendingPathComponent("src/main/java/com/example")
+        try? FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        let controllerURL = sourceDirectory.appendingPathComponent("AccountController.java")
+        let controller = """
+        package com.example;
+
+        @RestController
+        @RequestMapping("/api/accounts")
+        public class AccountController {
+            @GetMapping("/{id}")
+            public Account get(@PathVariable("id") String id,
+                               @RequestParam(value = "withProfile", required = false) Boolean withProfile,
+                               @RequestHeader("X-Tenant") String tenant,
+                               @RequestBody Account body) {
+                return body;
+            }
+
+            @PostMapping
+            public String create(@RequestBody Map<String, Object> payload) {
+                return "ok";
+            }
+        }
+        """
+        try? controller.write(to: controllerURL, atomically: true, encoding: .utf8)
+
+        do {
+            let interfaces = try JavaProjectScanner.scan(at: rootURL)
+            expectEqual("扫描 Controller 方法数", interfaces.count, 2)
+            let getter = interfaces.first { $0.name == "get" }
+            expectEqual("读取 GET 地址", getter?.url, "/api/accounts/{id}")
+            expectEqual("读取请求方法", getter?.method, .get)
+            check("路径参数", getter?.params.contains { $0.location == .path && $0.key == "id" } == true)
+            check("查询参数", getter?.params.contains { $0.location == .query && $0.key == "withProfile" } == true)
+            check("请求头参数", getter?.headers.contains { $0.key == "X-Tenant" } == true)
+            expectEqual("请求体类型", getter?.body.kind, .json)
+
+            let app = AppStore(storage: PersistenceStore(root: root.appendingPathComponent("java-store")))
+            let project = app.createProject(name: "Java 项目")
+            let manual = APIRequest(name: "手工接口", method: .get, url: "/manual")
+            app.updateProject(id: project.id) { $0.insert(manual, intoFolder: nil) }
+            await app.syncJavaInterfaces(projectID: project.id, folderURL: rootURL)
+            let synced = app.project(id: project.id)
+            expectEqual("同步后接口数量", synced?.requests.count, 3)
+            let first = synced?.requests.first { $0.sourceKey?.contains("get") == true }
+            check("同步 Controller 目录", synced?.collection.contains { $0.kind == .folder && $0.name == "AccountController" } == true)
+            check("手工接口保留", synced?.requests.contains { $0.name == "手工接口" } == true)
+            check("来源标记可匹配", first?.sourceKey == "src/main/java/com/example/AccountController.java#AccountController#get")
+
+            let updatedController = controller.replacingOccurrences(of: "\"/{id}\"", with: "\"/v2/{id}\"")
+            try updatedController.write(to: controllerURL, atomically: true, encoding: .utf8)
+            await app.syncJavaInterfaces(projectID: project.id, folderURL: rootURL)
+            let refreshed = app.project(id: project.id)
+            expectEqual("二次同步接口数量", refreshed?.requests.count, 3)
+            expectEqual("同一接口复用请求 id", refreshed?.requests.first { $0.sourceKey?.contains("get") == true }?.id, first?.id)
+            expectEqual("地址按源码更新", refreshed?.requests.first { $0.sourceKey?.contains("get") == true }?.url, "/api/accounts/v2/{id}")
+            check("记录绑定路径", refreshed?.javaSyncFolderPath == rootURL.path)
+            check("记录同步时间", refreshed?.javaSyncedAt != nil)
+        } catch {
+            check("扫描 Java Controller", false, detail: error.localizedDescription)
+        }
     }
 
     // MARK: - 工作区导入

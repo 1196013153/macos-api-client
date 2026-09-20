@@ -257,6 +257,10 @@ public struct Project: Identifiable, Codable, Hashable, Sendable {
     public var favoriteRequestIDs: [UUID]
     public var createdAt: Date
     public var updatedAt: Date
+    /// 绑定的 Java 项目根目录；为空表示未开启接口同步。
+    public var javaSyncFolderPath: String?
+    /// 最近一次 Java 接口同步时间。
+    public var javaSyncedAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -270,7 +274,9 @@ public struct Project: Identifiable, Codable, Hashable, Sendable {
         requests: [APIRequest] = [],
         favoriteRequestIDs: [UUID] = [],
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        javaSyncFolderPath: String? = nil,
+        javaSyncedAt: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -284,6 +290,8 @@ public struct Project: Identifiable, Codable, Hashable, Sendable {
         self.favoriteRequestIDs = favoriteRequestIDs
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.javaSyncFolderPath = javaSyncFolderPath
+        self.javaSyncedAt = javaSyncedAt
     }
 
     // `favoriteRequestIDs` 是后加的字段：磁盘上的老项目文件没有它，
@@ -304,6 +312,8 @@ public struct Project: Identifiable, Codable, Hashable, Sendable {
         favoriteRequestIDs = try container.decodeIfPresent([UUID].self, forKey: .favoriteRequestIDs) ?? []
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        javaSyncFolderPath = try container.decodeIfPresent(String.self, forKey: .javaSyncFolderPath)
+        javaSyncedAt = try container.decodeIfPresent(Date.self, forKey: .javaSyncedAt)
     }
 
     // MARK: 环境
