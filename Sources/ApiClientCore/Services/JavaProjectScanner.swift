@@ -44,6 +44,8 @@ public enum JavaProjectScanner {
         var name: String
         var superclass: String?
         var body: String
+        /// 字段名 -> 紧贴声明上方的注释（同一个文件里的类共用一份）。
+        var fieldComments: [String: String]
     }
 
     public static func scan(at root: URL) throws -> [JavaInterface] {
@@ -59,7 +61,7 @@ public enum JavaProjectScanner {
             return JavaSource(file: file, raw: raw, source: stripComments(raw))
         }
         let types = javaTypes(in: sources)
-        let interfaces = sources.flatMap { parse(file: $0.file, source: $0.source, root: root, types: types) }
+        let interfaces = sources.flatMap { parse(source: $0, root: root, types: types) }
         guard !interfaces.isEmpty else { throw JavaProjectScannerError.noInterfaces }
         return interfaces
     }
@@ -89,7 +91,11 @@ public enum JavaProjectScanner {
         return result
     }
 
-    private static func parse(file: URL, source: String, root: URL, types: [String: [JavaType]]) -> [JavaInterface] {
+    private static func parse(source javaSource: JavaSource, root: URL, types: [String: [JavaType]]) -> [JavaInterface] {
+        let file = javaSource.file
+        let source = javaSource.source
+        // stripComments 保留注释里的换行，所以剥离后的行号和原文一一对应，可以按行回原文取注释。
+        let rawLines = javaSource.raw.split(separator: "\n", omittingEmptySubsequences: false)
         let classMatches = matches(in: source, pattern: #"\bclass\s+(\w+)"#)
         guard let classMatch = classMatches.first else { return [] }
 
@@ -106,6 +112,7 @@ public enum JavaProjectScanner {
         }
 
         let body = String(source[source.index(after: classMatch[0]!.upperBound)...])
+        let bodyStartLine = lineNumber(of: classMatch[0]!.upperBound, in: source)
         let mappingMatches = annotationMatches(in: body).sorted { $0.range.lowerBound < $1.range.lowerBound }
         var interfaces: [JavaInterface] = []
 
@@ -117,6 +124,10 @@ public enum JavaProjectScanner {
             guard let signature = methodSignature(in: String(body[searchRange])) else {
                 continue
             }
+            let mappingLine = bodyStartLine + lineNumber(of: mapping.range.lowerBound, in: body)
+            // 注释多数写在映射注解上方，也有工程写在注解和方法声明之间。
+            let summary = commentAbove(line: mappingLine, in: rawLines)
+                ?? commentBelow(line: mappingLine, in: rawLines)
 
             let rootPath = root.resolvingSymlinksInPath().path
             let filePath = file.resolvingSymlinksInPath().path
@@ -131,6 +142,7 @@ public enum JavaProjectScanner {
                 signature: signature,
                 sourceKey: sourceKey,
                 relativePath: relativePath,
+                summary: summary,
                 types: types
             ))
         }
@@ -144,6 +156,7 @@ public enum JavaProjectScanner {
         signature: MethodSignature,
         sourceKey: String,
         relativePath: String,
+        summary: String?,
         types: [String: [JavaType]]
     ) -> JavaInterface {
         var params: [KeyValueItem] = []
@@ -182,7 +195,9 @@ public enum JavaProjectScanner {
             params: params,
             headers: headers,
             body: requestBody,
-            note: "Java: \(className).\(signature.name)\n文件: \(relativePath)",
+            note: [summary, "Java: \(className).\(signature.name)", "文件: \(relativePath)"]
+                .compactMap { $0 }
+                .joined(separator: "\n"),
             sourceKey: sourceKey,
             folderName: className
         )
@@ -195,6 +210,7 @@ public enum JavaProjectScanner {
     private static func javaTypes(in sources: [JavaSource]) -> [String: [JavaType]] {
         var result: [String: [JavaType]] = [:]
         for source in sources {
+            let fieldComments = fieldComments(in: source.raw)
             let classMatches = matches(
                 in: source.source,
                 pattern: #"\bclass\s+(\w+)(?:\s+extends\s+([\w.]+))?"#
@@ -226,7 +242,8 @@ public enum JavaProjectScanner {
                 let type = JavaType(
                     name: name,
                     superclass: match[2].map { String(source.source[$0]) },
-                    body: String(source.source[braceRange.upperBound..<closeIndex])
+                    body: String(source.source[braceRange.upperBound..<closeIndex]),
+                    fieldComments: fieldComments
                 )
                 result[name, default: []].append(type)
             }
@@ -245,7 +262,7 @@ public enum JavaProjectScanner {
               definitions.count == 1,
               let type = definitions.first else { return nil }
 
-        var fields = javaFields(in: type.body)
+        var fields = javaFields(in: type.body, comments: type.fieldComments)
         var nextVisited = visited
         nextVisited.insert(simpleName)
         if let superclass = type.superclass?.split(separator: ".").last.map(String.init),
@@ -258,13 +275,135 @@ public enum JavaProjectScanner {
         return fields
     }
 
-    private static func javaFields(in typeBody: String) -> [KeyValueItem] {
+    private static func javaFields(in typeBody: String, comments: [String: String]) -> [KeyValueItem] {
         let pattern = #"(?m)^\s*(?:private|protected|public)\s+(?!static\b)(?:final\s+)?(?:transient\s+)?(?:volatile\s+)?[\w$][\w$.<>\[\], ?]*\s+([\w$]+)\s*(?:=[^;]*)?;"#
         return matches(in: typeBody, pattern: pattern).compactMap { match in
             guard let range = match[1] else { return nil }
             let name = String(typeBody[range])
-            return KeyValueItem(key: name, value: "", note: "请求对象字段", location: .query)
+            return KeyValueItem(key: name, value: "", note: comments[name] ?? "请求对象字段", location: .query)
         }
+    }
+
+    // MARK: - 注释
+
+    /// 字段名 -> 紧贴声明上方的注释。
+    ///
+    /// 按行扫原文而不是扫剥离后的源码：`// @ApiModelProperty(value = "商品ID")` 这种
+    /// 把注解注释掉的写法在老工程里很常见，只有原文里才看得到。
+    private static func fieldComments(in raw: String) -> [String: String] {
+        var result: [String: String] = [:]
+        var pending: [String] = []
+        var inBlockComment = false
+
+        for rawLine in raw.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+
+            if inBlockComment {
+                pending.append(line)
+                if line.contains("*/") { inBlockComment = false }
+                continue
+            }
+            if line.hasPrefix("/*") {
+                pending.append(line)
+                inBlockComment = !line.contains("*/")
+                continue
+            }
+            if line.hasPrefix("//") || line.hasPrefix("*") || line.hasPrefix("@") {
+                pending.append(line)
+                continue
+            }
+            if line.isEmpty {
+                pending.removeAll()
+                continue
+            }
+            if let field = fieldName(inDeclaration: line), let comment = commentText(from: pending) {
+                result[field] = comment
+            }
+            pending.removeAll()
+        }
+        return result
+    }
+
+    private static func fieldName(inDeclaration line: String) -> String? {
+        let pattern = #"^\s*(?:private|protected|public)\s+(?!static\b)(?:final\s+)?(?:transient\s+)?(?:volatile\s+)?[\w$][\w$.<>\[\], ?]*\s+([\w$]+)\s*(?:=[^;]*)?;"#
+        guard let match = matches(in: line, pattern: pattern).first, let range = match[1] else { return nil }
+        return text(of: range, in: line)
+    }
+
+    /// 声明上方紧挨着的注释块：中间允许夹注解和空行，遇到别的代码就停。
+    private static func commentAbove(line: Int, in lines: [Substring]) -> String? {
+        var collected: [String] = []
+        var index = line - 1
+        while index >= 0 {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                index -= 1
+                continue
+            }
+            guard trimmed.hasPrefix("//") || trimmed.hasPrefix("/*") || trimmed.hasPrefix("*") || trimmed.hasPrefix("@") else {
+                break
+            }
+            collected.append(trimmed)
+            index -= 1
+        }
+        return commentText(from: collected.reversed())
+    }
+
+    /// 映射注解下方、方法声明之前的注释块（有些工程把 `// @ApiOperation(...)` 写在这里）。
+    private static func commentBelow(line: Int, in lines: [Substring]) -> String? {
+        var collected: [String] = []
+        var index = line + 1
+        while index < lines.count {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("@") {
+                index += 1
+                continue
+            }
+            guard trimmed.hasPrefix("//") || trimmed.hasPrefix("/*") || trimmed.hasPrefix("*") else { break }
+            collected.append(trimmed)
+            index += 1
+        }
+        return commentText(from: collected)
+    }
+
+    private static func commentText(from lines: [String]) -> String? {
+        let block = lines.joined(separator: "\n")
+        if let annotated = annotationDescription(in: block) { return annotated }
+        let body = lines
+            .map { cleanCommentLine($0) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("@") }
+            .joined(separator: " ")
+        return body.isEmpty ? nil : body
+    }
+
+    /// `@ApiModelProperty(value = "商品ID")`、`@ApiParam("...")`、`@Schema(description = "...")`
+    /// 这类注解里的说明文字，取块里最早出现的那一个。
+    private static func annotationDescription(in block: String) -> String? {
+        var best: (position: String.Index, text: String)?
+        for name in ["ApiModelProperty", "ApiParam", "Schema", "ApiOperation"] {
+            guard let range = block.range(of: "@\(name)") else { continue }
+            guard let quoted = strings(in: String(block[range.upperBound...])).first, !quoted.isEmpty else { continue }
+            if best == nil || range.lowerBound < best!.position {
+                best = (range.lowerBound, quoted)
+            }
+        }
+        return best?.text
+    }
+
+    /// 去掉 `//`、`/**`、`*/`、行首 `*` 这些注释符号，留下正文。
+    private static func cleanCommentLine(_ line: String) -> String {
+        var text = line.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("//") { text.removeFirst(2) }
+        if text.hasPrefix("/**") { text.removeFirst(3) }
+        else if text.hasPrefix("/*") { text.removeFirst(2) }
+        if text.hasSuffix("*/") { text.removeLast(2) }
+        while text.hasPrefix("*") { text.removeFirst() }
+        return text.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// 字符下标落在第几行（0 起）。
+    private static func lineNumber(of index: String.Index, in text: String) -> Int {
+        text[text.startIndex..<index].reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
     }
 
     // MARK: - 注解 / 方法签名

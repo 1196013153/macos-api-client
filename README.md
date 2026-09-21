@@ -62,6 +62,10 @@ swift run APIClient --self-check
 - 入口：右上角工具栏；未绑定时点「绑定」图标，已绑定后点「刷新」图标重新扫描
 - 识别路径、HTTP 方法、`@PathVariable`、`@RequestParam`、`@RequestHeader`、`@RequestBody`
 - 忽略 `build` / `target` / `.git` 等目录，按 `文件#类#方法` 匹配，源码变化时复用请求 id
+- 重新同步会原地更新导入过的同源接口并合并重复项，已打开的标签页跟着刷新
+- 带出 Java 注释：方法 Javadoc / `@ApiOperation` 进「说明」，字段的 Javadoc、
+  `@ApiModelProperty`（含被 `//` 注释掉的写法）进参数「备注」
+- 参数 / 请求头 / 表单支持一键「全选 / 反选 / 全不选」勾选
 
 ### 导入参考项目的工作区
 

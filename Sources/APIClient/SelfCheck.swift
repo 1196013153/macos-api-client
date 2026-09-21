@@ -1384,6 +1384,9 @@ enum SelfCheck {
         @RestController
         @RequestMapping("/api/accounts")
         public class AccountController {
+            /**
+             * 读取账户详情。
+             */
             @GetMapping("/{id}")
             public Account get(@PathVariable("id") String id,
                                @RequestParam(value = "withProfile", required = false) Boolean withProfile,
@@ -1393,6 +1396,8 @@ enum SelfCheck {
             }
 
             @PostMapping
+            // @ApiOperation(value = "创建账户")
+            @LoginAnnotation(requiredLogin = true)
             public String create(@RequestBody Map<String, Object> payload) {
                 return "ok";
             }
@@ -1404,8 +1409,16 @@ enum SelfCheck {
         package com.example;
 
         public class GoodsDetailRequest {
+            // @ApiModelProperty(value = "商品ID")
             private String itemId;
+
+            /**
+             * 店铺类型：B-天猫，C-淘宝
+             */
             private String shopType;
+
+            @ApiModelProperty(value = "场景")
+            private String scene;
         }
         """
         let requestTypeURL = sourceDirectory.appendingPathComponent("GoodsDetailRequest.java")
@@ -1436,12 +1449,17 @@ enum SelfCheck {
             check("查询参数", getter?.params.contains { $0.location == .query && $0.key == "withProfile" } == true)
             check("请求头参数", getter?.headers.contains { $0.key == "X-Tenant" } == true)
             expectEqual("请求体类型", getter?.body.kind, .json)
+            check("方法注释进说明", getter?.note.hasPrefix("读取账户详情。") == true)
+            check("映射注解下方的注释也认", interfaces.first { $0.name == "create" }?.note.hasPrefix("创建账户") == true)
 
             let goodsDetail = interfaces.first { $0.name == "detail" }
             expectEqual("读取 POJO 请求地址", goodsDetail?.url, "/goods/detail")
             check("展开 GET POJO 字段", goodsDetail?.params.contains { $0.key == "itemId" && $0.location == .query } == true)
             check("展开 GET POJO 第二字段", goodsDetail?.params.contains { $0.key == "shopType" && $0.location == .query } == true)
             check("不再保留 request 占位参数", goodsDetail?.params.contains { $0.key == "request" } == false)
+            check("注释掉的 @ApiModelProperty 也认", goodsDetail?.params.first { $0.key == "itemId" }?.note == "商品ID")
+            check("Javadoc 字段注释", goodsDetail?.params.first { $0.key == "shopType" }?.note == "店铺类型：B-天猫，C-淘宝")
+            check("注解字段注释", goodsDetail?.params.first { $0.key == "scene" }?.note == "场景")
 
             let app = AppStore(storage: PersistenceStore(root: root.appendingPathComponent("java-store")))
             let project = app.createProject(name: "Java 项目")

@@ -172,13 +172,27 @@ public extension AppStore {
         return updated
     }
 
-    /// 扫描结果只接管「Java: / 文件:」两行来源信息，说明里原有的业务描述继续保留。
+    /// 合并说明：扫描到了方法注释就以源码为准（导入时那份描述本来也是同一个 Javadoc，
+    /// 留着只会重复）；没扫到注释时保留原有的业务描述，并刷新 `Java: / 文件:` 来源行。
+    /// 重复同步不会越滚越长。
     private func mergedNote(_ existing: String, scanned: String) -> String {
+        let scannedLines = scanned
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        let hasSummary = scannedLines.contains { line in
+            !line.isEmpty && !line.hasPrefix("Java:") && !line.hasPrefix("文件:")
+        }
+        if hasSummary { return scanned }
+
+        let scannedSet = Set(scannedLines)
         let description = existing
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { line in
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
-                return !trimmed.isEmpty && !trimmed.hasPrefix("Java:") && !trimmed.hasPrefix("文件:")
+                guard !trimmed.isEmpty else { return false }
+                return !trimmed.hasPrefix("Java:")
+                    && !trimmed.hasPrefix("文件:")
+                    && !scannedSet.contains(trimmed)
             }
             .joined(separator: "\n")
         return description.isEmpty ? scanned : description + "\n" + scanned

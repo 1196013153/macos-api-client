@@ -99,6 +99,17 @@ struct KeyValueTableEditor: View {
             }
             .buttonStyle(AppButtonStyle(kind: .tinted, size: .small))
 
+            Group {
+                Button("全选") { setAllEnabled(true) }
+                    .help("勾选全部行")
+                Button("反选") { invertEnabled() }
+                    .help("每行的勾选状态取反")
+                Button("全不选") { setAllEnabled(false) }
+                    .help("取消勾选全部行")
+            }
+            .buttonStyle(AppButtonStyle(kind: .ghost, size: .small))
+            .disabled(items.isEmpty)
+
             Spacer(minLength: 0)
 
             let active = items.activeItems.count
@@ -114,6 +125,19 @@ struct KeyValueTableEditor: View {
         .padding(.horizontal, DS.space.lg)
         .frame(height: 32)
         .background(DS.color.surface)
+    }
+
+    /// 批量勾选 / 取消勾选（筛选完接口后一键让所有参数生效）。
+    private func setAllEnabled(_ enabled: Bool) {
+        for index in items.indices {
+            items[index].isEnabled = enabled
+        }
+    }
+
+    private func invertEnabled() {
+        for index in items.indices {
+            items[index].isEnabled.toggle()
+        }
     }
 
     private func delete(_ target: KeyValueItem) {
