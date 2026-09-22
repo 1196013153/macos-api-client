@@ -176,10 +176,9 @@ enum DS {
         static let listRow: CGFloat = 26
         static let kvRow: CGFloat = 28
         static let barHeight: CGFloat = 36
-        static let tabHeight: CGFloat = 30
+        /// 标签高度 + 上方留白 = 标签条高度：标签底边与内容区严丝合缝地接上。
+        static let tabHeight: CGFloat = 32
         static let tabStripHeight: CGFloat = 40
-        static let projectTabHeight: CGFloat = 24
-        static let projectTabStripHeight: CGFloat = 34
         static let headerHeight: CGFloat = 46
         static let contentPadding: CGFloat = 12
         /// 侧边栏树每层缩进

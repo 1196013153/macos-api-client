@@ -82,6 +82,36 @@ struct RootView: View {
         }
     }
 
+    /// 命令面板入口。只有菜单项和快捷键的话没人会发现它，
+    /// 而这正是两千多个接口里最该被用到的那个功能。
+    private var commandPaletteButton: some View {
+        Button {
+            ui.commandPalette = true
+        } label: {
+            HStack(spacing: DS.space.sm) {
+                AppIcon(symbol: "magnifyingglass", size: 10, tint: DS.color.textSecondary)
+                Text("跳转接口")
+                    .font(DS.font.caption)
+                    .foregroundStyle(DS.color.textSecondary)
+                Text("⌘K")
+                    .font(DS.font.monoTiny)
+                    .foregroundStyle(DS.color.textTertiary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: DS.radius.xs, style: .continuous)
+                            .fill(DS.color.field)
+                    )
+            }
+            .padding(.horizontal, DS.space.md)
+            .frame(height: 22)
+            .background(DS.color.field.opacity(0.5), in: Capsule())
+            .overlay(Capsule().strokeBorder(DS.color.hairline, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("跨全部项目搜接口并跳转（⌘K）")
+    }
+
     /// 环境切换。原先挂在请求编辑区的元信息栏里，但环境是**项目级**设置：
     /// 换环境影响这个项目的所有请求，放进工具栏才对得上它的作用域。
     /// 色点与内容区顶部的色轨同色，避免打错环境。
@@ -149,6 +179,8 @@ struct RootView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            commandPaletteButton
+
             if let project = store.activeProject {
                 environmentMenu(project: project)
             }

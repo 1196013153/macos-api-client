@@ -46,7 +46,9 @@ struct TabStripView: View {
                         }
                     }
                     .padding(.horizontal, DS.space.md)
-                    .padding(.vertical, DS.space.sm)
+                    // 显式贴底：横向 ScrollView 不会自动把内容压到底边，
+                    // 不锁 alignment 就会在标签和下面的内容之间留出一道缝。
+                    .frame(height: DS.metric.tabStripHeight, alignment: .bottom)
                 }
                 .animation(DS.motion.enter, value: tabIDs)
                 .onChange(of: store.activeTabID) { _, newValue in
@@ -93,8 +95,13 @@ struct TabStripView: View {
                 .help("标签页操作")
             }
             .padding(.horizontal, DS.space.sm)
+            .frame(height: DS.metric.tabStripHeight, alignment: .bottom)
+            .padding(.bottom, DS.space.xs)
         }
         .frame(height: DS.metric.tabStripHeight)
+        // 比激活标签与下方地址栏都暗一档：颜色差本身就是分隔，不必再画一条线。
+        // 用 sunken 而不是 canvas：深色模式下 canvas 和 surface 几乎同色，
+        // 激活标签就浮不出来了。
         .background(DS.color.sunken)
     }
 }
@@ -115,8 +122,15 @@ struct TabChipView: View {
 
     private var isActive: Bool { store.activeTabID == session.id }
 
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: DS.radius.sm, style: .continuous)
+    /// 只圆上面两个角：下边要和内容区连成一体，圆角会露出一道缝。
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: DS.radius.md,
+            bottomLeadingRadius: 0,
+            bottomTrailingRadius: 0,
+            topTrailingRadius: DS.radius.md,
+            style: .continuous
+        )
     }
 
     var body: some View {
@@ -159,7 +173,17 @@ struct TabChipView: View {
         }
         .background(shape.fill(background))
         .overlay(shape.strokeBorder(borderColor, lineWidth: 1))
-        .shadow(color: isActive ? .black.opacity(0.07) : .clear, radius: 3, y: 1)
+        // strokeBorder 会把底边也描上，激活标签就被“封口”了。
+        // 用同色细线盖掉底边，标签与下面的地址栏连成一块。
+        .overlay(alignment: .bottom) {
+            if isActive {
+                Rectangle()
+                    .fill(DS.color.surface)
+                    .frame(height: 1)
+            }
+        }
+        // y 取负：阴影往上飘，别在标签与内容的接缝处压出一道暗边。
+        .shadow(color: isActive ? .black.opacity(0.10) : .clear, radius: 3, y: -1)
         .contentShape(shape)
         .onHover { isHovering = $0 }
         .animation(DS.motion.select, value: isActive)
@@ -236,10 +260,11 @@ struct TabChipView: View {
         return "\(projectName) · \(address)"
     }
 
+    /// 激活标签用**下方地址栏的同一个底色**，两块连成一片，像浏览器标签那样。
     private var background: Color {
-        if isActive { return DS.color.elevated }
+        if isActive { return DS.color.surface }
         // 非激活也要有底：一排标签全透明时彼此没有边界，四个长标题会连成一条读不出来。
-        return isHovering ? DS.color.rowHover : DS.color.field.opacity(0.55)
+        return isHovering ? DS.color.rowHover : DS.color.field.opacity(0.45)
     }
 
     private var borderColor: Color {

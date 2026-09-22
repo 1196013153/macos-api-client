@@ -12,8 +12,9 @@ struct WorkspaceView: View {
 
             // 只有一条标签条：所有项目的标签排在一起，用项目名前缀区分。
             // 原先顶层还有一条项目标签行，信息量不足以换一整行高度。
+            // 标签条与内容之间不再画线：激活标签要和下面连成一片，
+            // 一条横线会把它拦腰截断。深浅色差已经足够分隔。
             TabStripView()
-            hairline
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
