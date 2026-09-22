@@ -35,6 +35,11 @@ struct RootView: View {
         .sheet(item: $ui.prompt) { prompt in
             PromptSheet(prompt: prompt) { ui.prompt = nil }
         }
+        .sheet(isPresented: $ui.commandPalette) {
+            CommandPalette()
+                .environment(store)
+                .environment(ui)
+        }
         .alert(
             ui.confirm?.title ?? "",
             isPresented: Binding(
@@ -77,15 +82,75 @@ struct RootView: View {
         }
     }
 
+    /// 环境切换。原先挂在请求编辑区的元信息栏里，但环境是**项目级**设置：
+    /// 换环境影响这个项目的所有请求，放进工具栏才对得上它的作用域。
+    /// 色点与内容区顶部的色轨同色，避免打错环境。
+    private func environmentMenu(project: Project) -> some View {
+        let environment = project.activeEnvironment
+        let tone = EnvironmentTone.color(for: environment)
+
+        return Menu {
+            Section("环境") {
+                ForEach(project.environments) { candidate in
+                    Button {
+                        store.setActiveEnvironment(projectID: project.id, environmentID: candidate.id)
+                    } label: {
+                        if candidate.id == environment?.id {
+                            Label(candidate.name, systemImage: "checkmark")
+                        } else {
+                            Text(candidate.name)
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("管理环境与变量…") { ui.sheet = .environment(project.id) }
+        } label: {
+            HStack(spacing: DS.space.sm) {
+                Circle()
+                    .fill(tone)
+                    .frame(width: 7, height: 7)
+                Text(environment?.name ?? "未选择环境")
+                    .font(DS.font.caption)
+                    .foregroundStyle(DS.color.textPrimary)
+                    .lineLimit(1)
+                AppIcon(symbol: "chevron.down", size: 7, weight: .bold, tint: DS.color.textTertiary)
+            }
+            .padding(.horizontal, DS.space.md)
+            .frame(height: 22)
+            .background(tone.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(tone.opacity(0.35), lineWidth: 1))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(environmentHelp(project: project))
+        .animation(DS.motion.select, value: environment?.id)
+    }
+
+    private func environmentHelp(project: Project) -> String {
+        let environment = project.activeEnvironment
+        let base = environment?.baseURL.isEmpty == false
+            ? "baseURL：\(environment?.baseURL ?? "")"
+            : "该环境未设置 baseURL"
+        return EnvironmentTone.isProduction(environment) ? "⚠️ 当前是生产环境 · \(base)" : base
+    }
+
+    /// 侧边栏顶部已经写了项目名与接口数，环境也已在工具栏常驻，
+    /// 这里只补一句它们没说的：打开了多少标签。
     private var subtitle: String {
-        guard let project = store.activeProject else { return "尚未创建项目" }
-        let environment = project.activeEnvironment?.name ?? "未选择环境"
-        return "\(project.requests.count) 个接口 · 环境 \(environment) · \(store.visibleSessions.count) 个标签"
+        guard store.activeProject != nil else { return "尚未创建项目" }
+        let count = store.sessions.count
+        return count == 0 ? "没有打开的标签" : "\(count) 个标签"
     }
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            if let project = store.activeProject {
+                environmentMenu(project: project)
+            }
+
             Button {
                 guard let id = store.activeProjectID,
                       let url = FileDialogs.openDirectory(message: "选择 Java / Spring 项目根目录") else { return }

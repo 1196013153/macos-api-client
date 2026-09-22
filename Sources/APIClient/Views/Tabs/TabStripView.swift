@@ -1,23 +1,27 @@
 import SwiftUI
 import ApiClientCore
 
-/// 当前项目的请求标签条。
+/// 请求标签条（单层）。
 ///
-/// 直接挂在顶层「项目标签」之下：这里永远只有当前一个项目的标签，
-/// 所以不需要项目徽标，也不会有「关掉别的项目正在编辑的东西」这种事。
+/// 所有项目的标签排在同一条里，按项目分组、用项目名前缀区分；
+/// 点别的项目的标签会顺带切过去，停在那个标签上。
+/// 原先顶上还有一条独立的项目标签行，那一行的信息量换不来一整行高度。
 struct TabStripView: View {
     @Environment(AppStore.self) private var store
     @Environment(UIState.self) private var ui
 
-    private var tabIDs: [UUID] { store.visibleSessions.map(\.id) }
+    private var orderedSessions: [TabSession] { store.allOrderedSessions }
+    private var tabIDs: [UUID] { orderedSessions.map(\.id) }
+    /// 只开了一个项目时不必重复显示项目名。
+    private var showsProjectName: Bool { store.projectsWithTabs.count > 1 }
 
     var body: some View {
         HStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: DS.space.xs) {
-                        ForEach(store.visibleSessions) { session in
-                            TabChipView(session: session)
+                        ForEach(orderedSessions) { session in
+                            TabChipView(session: session, showsProjectName: showsProjectName)
                                 .id(session.id)
                                 .transition(
                                     .asymmetric(
@@ -86,8 +90,14 @@ struct TabChipView: View {
     @Environment(UIState.self) private var ui
 
     let session: TabSession
+    var showsProjectName = false
 
     @State private var isHovering = false
+
+    private var projectName: String? {
+        guard showsProjectName else { return nil }
+        return store.project(id: session.projectID)?.name
+    }
 
     private var isActive: Bool { store.activeTabID == session.id }
 
@@ -101,6 +111,18 @@ struct TabChipView: View {
                 store.activateTab(id: session.id)
             } label: {
                 HStack(spacing: DS.space.sm) {
+                    if let projectName {
+                        Text(projectName)
+                            .font(DS.font.caption)
+                            .foregroundStyle(DS.color.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 76, alignment: .trailing)
+                        Rectangle()
+                            .fill(DS.color.hairline)
+                            .frame(width: 1, height: 12)
+                    }
+
                     methodLabel
 
                     Text(session.displayName)
@@ -115,6 +137,8 @@ struct TabChipView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressableRowStyle(scale: 0.97))
+            // 名称原先常驻在编辑区一条元信息栏里占着输入框，改成按需重命名。
+            .simultaneousGesture(TapGesture(count: 2).onEnded { promptRename() })
 
             statusArea
                 .padding(.trailing, DS.space.xs)
@@ -127,6 +151,8 @@ struct TabChipView: View {
         .animation(DS.motion.select, value: isActive)
         .animation(DS.motion.hover, value: isHovering)
         .contextMenu {
+            Button("重命名…") { promptRename() }
+            Divider()
             if let requestID = session.requestID {
                 let favorited = store.isFavorite(projectID: session.projectID, requestID: requestID)
                 Button(favorited ? "取消收藏" : "收藏") {
@@ -145,7 +171,19 @@ struct TabChipView: View {
                 if let id = store.activeProjectID { TabClosing.closeAll(for: id, store: store, ui: ui) }
             }
         }
-        .help(session.buffer.url.isEmpty ? session.displayName : session.buffer.url)
+        .help(tooltip)
+    }
+
+    private func promptRename() {
+        ui.ask(
+            title: "重命名请求",
+            placeholder: "请求名称",
+            initialValue: session.buffer.name
+        ) { newName in
+            let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            store.updateBuffer(tabID: session.id) { $0.name = trimmed }
+        }
     }
 
     private var methodLabel: some View {
@@ -176,6 +214,12 @@ struct TabChipView: View {
             }
         }
         .frame(width: 18, height: 18)
+    }
+
+    private var tooltip: String {
+        let address = session.buffer.url.isEmpty ? session.displayName : session.buffer.url
+        guard let projectName else { return address }
+        return "\(projectName) · \(address)"
     }
 
     private var background: Color {

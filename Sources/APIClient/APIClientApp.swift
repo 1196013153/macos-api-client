@@ -73,10 +73,15 @@ struct AppCommands: Commands {
 
             Divider()
 
-            Button("搜索接口…") {
-                ui.searchFocusTicket += 1
+            Button("跳转到接口…") {
+                ui.commandPalette = true
             }
             .keyboardShortcut("k", modifiers: .command)
+
+            Button("在当前项目内搜索") {
+                ui.searchFocusTicket += 1
+            }
+            .keyboardShortcut("f", modifiers: .command)
 
             Divider()
 

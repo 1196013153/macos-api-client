@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import ApiClientCore
 
 /// 无界面自检：`APIClient --self-check`
@@ -37,6 +38,7 @@ enum SelfCheck {
         checkRequestSearch()
         await checkProjectsAndTabs()
         checkWorkspaceImport()
+        checkEnvironmentTone()
         await checkJavaSync()
 
         print(String(repeating: "─", count: 60))
@@ -1186,6 +1188,22 @@ enum SelfCheck {
         expectEqual("往前切是循环的", app.activeProjectID, projectB.id)
         expectEqual("切项目标签不丢任何标签", app.sessions.count, 2)
         expectEqual("两级结构下每个项目各有活动标签", app.activeTabByProject.count, 2)
+
+        // 标签条已经合成一层：所有项目的标签排在同一条里，按项目分组。
+        // 分组顺序取项目列表顺序而不是打开顺序，来回切换时标签位置不会跳。
+        let ordered = app.allOrderedSessions
+        expectEqual("单层标签条包含全部项目的标签", ordered.count, app.sessions.count)
+        check(
+            "标签按项目连续分组",
+            ordered.map(\.projectID) == ordered.map(\.projectID).reduce(into: [UUID]()) { acc, id in
+                if acc.last != id { acc.append(id) }
+            }.flatMap { id in ordered.filter { $0.projectID == id }.map(\.projectID) }
+        )
+        expectEqual(
+            "分组顺序跟随项目列表",
+            Array(Set(ordered.map(\.projectID))).count,
+            app.projectsWithTabs.count
+        )
         app.setActiveProject(id: projectA.id)
         check("切回项目A仍停在a1", app.activeSession?.requestID == requestA)
 
@@ -1539,6 +1557,30 @@ enum SelfCheck {
         } catch {
             check("扫描 Java Controller", false, detail: error.localizedDescription)
         }
+    }
+
+    // MARK: - 环境语义色
+
+    private static func checkEnvironmentTone() {
+        section("环境语义色")
+
+        func tone(_ name: String, _ baseURL: String = "") -> Color {
+            EnvironmentTone.color(for: APIEnvironment(name: name, baseURL: baseURL))
+        }
+
+        expectEqual("生产判红", tone("生产环境"), DS.color.danger)
+        expectEqual("线上判红", tone("线上"), DS.color.danger)
+        expectEqual("prod 判红", tone("prod-cluster"), DS.color.danger)
+        expectEqual("预发判黄", tone("预发布"), DS.color.warning)
+        expectEqual("staging 判黄", tone("staging"), DS.color.warning)
+        expectEqual("测试判绿", tone("测试环境 3"), DS.color.success)
+        expectEqual("本地判绿", tone("local"), DS.color.success)
+        expectEqual("认不出用中性色", tone("环境甲"), DS.color.brand)
+        // 名字没写但域名写了，也要认出来——这是最容易踩的那种
+        expectEqual("按 baseURL 兜底判红", tone("默认", "https://api.prod.example.com"), DS.color.danger)
+
+        check("生产环境单独标记", EnvironmentTone.isProduction(APIEnvironment(name: "生产")))
+        check("测试环境不算生产", !EnvironmentTone.isProduction(APIEnvironment(name: "测试")))
     }
 
     // MARK: - 工作区导入

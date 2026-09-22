@@ -34,7 +34,10 @@ enum DS {
         /// 文本
         static let textPrimary = Color(nsColor: .labelColor)
         static let textSecondary = Color(nsColor: .secondaryLabelColor)
-        static let textTertiary = Color(nsColor: .tertiaryLabelColor)
+        /// 第三层文本。不用系统的 `tertiaryLabelColor`：它约 25% 不透明度，
+        /// 在本应用的面板底色上只有约 2.3:1，远低于 WCAG AA 的 4.5:1。
+        /// 这里压到刚好越过 AA，同时仍明显弱于 secondary，保住「主 > 次 > 辅」三层层级。
+        static let textTertiary = dynamic(light: rgba(0x000000, 0.54), dark: rgba(0xFFFFFF, 0.46))
 
         /// 品牌主色（发送按钮、品牌标记、焦点环）
         static let brand = dynamic(light: rgb(0x3D6BF5), dark: rgb(0x6E96FF))
@@ -82,7 +85,8 @@ enum DS {
 
     enum nsColor {
         static let textPrimary = NSColor.labelColor
-        static let textTertiary = NSColor.tertiaryLabelColor
+        /// 与 SwiftUI 侧 `DS.color.textTertiary` 同一档对比度（代码编辑器的行号等用它）。
+        static let textTertiary = dynamicNS(light: rgba(0x000000, 0.54), dark: rgba(0xFFFFFF, 0.46))
 
         static let syntaxKey = dynamicNS(light: rgb(0x0B5CAD), dark: rgb(0x7FB3FF))
         static let syntaxString = dynamicNS(light: rgb(0xB4531F), dark: rgb(0xE8A87C))

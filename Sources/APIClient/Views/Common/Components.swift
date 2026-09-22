@@ -130,6 +130,7 @@ struct AppButtonStyle: ButtonStyle {
 
 /// 图标按钮：正方形热区，悬停时浮出圆形底。
 struct IconButtonStyle: ButtonStyle {
+    /// 视觉尺寸（悬停圆底的直径）。命中区另算，见 `StyleBody`。
     var size: CGFloat = 24
     var tint: Color = DS.color.textSecondary
     var hoverTint: Color? = nil
@@ -155,7 +156,10 @@ struct IconButtonStyle: ButtonStyle {
                 .background(
                     Circle().fill(isHovering ? DS.color.rowHover : .clear)
                 )
-                .contentShape(Circle())
+                // 视觉可以很小（密集表格里的删除、收藏），但可点区域不该跟着缩到 14pt。
+                // 撑到 24pt 满足 WCAG 2.2 目标尺寸，撑开的部分是透明的，外观不变。
+                .frame(width: max(size, 24), height: max(size, 24))
+                .contentShape(Rectangle())
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.9 : 1)
                 .opacity(isEnabled ? 1 : 0.35)
                 .animation(reduceMotion ? nil : DS.motion.press, value: configuration.isPressed)
@@ -328,6 +332,23 @@ struct MethodBadge: View {
     }
 }
 
+/// HTTP 方法色轨。
+///
+/// 侧边栏树里用它替代 `MethodBadge`：一个 40px 的文字徽标换成 3px 色条，
+/// 省下的横向宽度全部还给接口名——树里的中文接口名长期被截断。
+/// 方法本身仍可读：颜色沿用 `MethodBadge` 同一套，tooltip 给出文字。
+struct MethodRail: View {
+    let method: HTTPMethod
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+            .fill(method.tint)
+            .frame(width: 3, height: 13)
+            .help(method.rawValue)
+            .accessibilityLabel(method.rawValue)
+    }
+}
+
 /// 计数 / 状态小胶囊。
 struct CountBadge: View {
     let text: String
@@ -412,24 +433,35 @@ struct DirtyDot: View {
 
 /// 请求编辑器 / 响应面板顶部的分区切换。指示条用 matchedGeometryEffect 滑动，
 /// 比每条各画一条下划线更连贯。
-struct SectionTabBar<Item: Hashable & Identifiable>: View {
+struct SectionTabBar<Item: Hashable & Identifiable, Leading: View, Trailing: View>: View {
     let items: [Item]
     let title: (Item) -> String
     var badge: (Item) -> String? = { _ in nil }
     var accent: (Item) -> Color? = { _ in nil }
     @Binding var selection: Item
+    /// 左侧前导内容（响应区的状态码 / 耗时 / 大小）。发送后第一眼看的就是它，放最左。
+    @ViewBuilder var leading: () -> Leading
+    /// 右侧尾随内容。这一行原本右半边一直空着，把当前分区的工具条放进来，
+    /// 就省掉了下面那条独立工具条整行的高度。
+    @ViewBuilder var trailing: () -> Trailing
 
     @Namespace private var indicator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: DS.space.hair) {
+            leading()
+                .padding(.leading, DS.space.md)
+                .padding(.trailing, DS.space.sm)
             ForEach(items) { item in
                 tab(for: item)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: DS.space.sm)
+            trailing()
+                .padding(.trailing, DS.space.lg)
         }
         .padding(.horizontal, DS.space.xs)
+        .frame(height: DS.metric.barHeight)
     }
 
     private func tab(for item: Item) -> some View {
@@ -470,6 +502,47 @@ struct SectionTabBar<Item: Hashable & Identifiable>: View {
         }
         .buttonStyle(PressableRowStyle(scale: 0.96))
         .animation(reduceMotion ? nil : DS.motion.select, value: selection)
+    }
+}
+
+extension SectionTabBar where Leading == EmptyView, Trailing == EmptyView {
+    init(
+        items: [Item],
+        title: @escaping (Item) -> String,
+        badge: @escaping (Item) -> String? = { _ in nil },
+        accent: @escaping (Item) -> Color? = { _ in nil },
+        selection: Binding<Item>
+    ) {
+        self.init(
+            items: items,
+            title: title,
+            badge: badge,
+            accent: accent,
+            selection: selection,
+            leading: { EmptyView() },
+            trailing: { EmptyView() }
+        )
+    }
+}
+
+extension SectionTabBar where Leading == EmptyView {
+    init(
+        items: [Item],
+        title: @escaping (Item) -> String,
+        badge: @escaping (Item) -> String? = { _ in nil },
+        accent: @escaping (Item) -> Color? = { _ in nil },
+        selection: Binding<Item>,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.init(
+            items: items,
+            title: title,
+            badge: badge,
+            accent: accent,
+            selection: selection,
+            leading: { EmptyView() },
+            trailing: trailing
+        )
     }
 }
 

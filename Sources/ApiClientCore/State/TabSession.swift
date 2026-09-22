@@ -40,6 +40,12 @@ public final class TabSession: Identifiable {
     public var responseBodyMode: ResponseBodyMode = .raw
     /// Mock 响应体编辑器停在哪一种请求体方式上；nil = 跟随请求体的方式。
     public var mockEditingKind: RequestBodyKind?
+    /// 请求体 JSON 校验结果；nil = 不需要校验（非 JSON 或内容为空）。
+    /// 放在标签上而不是视图里：正文工具条已经挪到分区标签行，和编辑器不在同一棵子树，
+    /// 两边都要读它。
+    public var bodyValidation: Bool?
+    /// 变化时让正文编辑器重新定位一次（切换方式 / 切换标签 / 格式化之后）。
+    public var bodyLocateToken = 0
     /// 打开标签时「按内容自动定位一次」，之后用户自己切的分区不再被覆盖。
     public private(set) var didAutoLocate = false
 
