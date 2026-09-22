@@ -12,16 +12,30 @@ struct TabStripView: View {
 
     private var orderedSessions: [TabSession] { store.allOrderedSessions }
     private var tabIDs: [UUID] { orderedSessions.map(\.id) }
-    /// 只开了一个项目时不必重复显示项目名。
-    private var showsProjectName: Bool { store.projectsWithTabs.count > 1 }
+
+    /// 项目名只标在每个项目的**第一个**标签上，当组头用。
+    ///
+    /// 标签已按项目连续分组，同一组里每个标签都重复一遍项目名是纯噪音——
+    /// 一个项目开四个标签就会看到四个一样的前缀，还把接口名挤没了。
+    private var groupLeaders: Set<UUID> {
+        guard store.projectsWithTabs.count > 1 else { return [] }
+        var leaders: Set<UUID> = []
+        var previousProjectID: UUID?
+        for session in orderedSessions where session.projectID != previousProjectID {
+            leaders.insert(session.id)
+            previousProjectID = session.projectID
+        }
+        return leaders
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: DS.space.xs) {
+                    HStack(spacing: DS.space.sm) {
+                        let leaders = groupLeaders
                         ForEach(orderedSessions) { session in
-                            TabChipView(session: session, showsProjectName: showsProjectName)
+                            TabChipView(session: session, showsProjectName: leaders.contains(session.id))
                                 .id(session.id)
                                 .transition(
                                     .asymmetric(
@@ -113,13 +127,13 @@ struct TabChipView: View {
                 HStack(spacing: DS.space.sm) {
                     if let projectName {
                         Text(projectName)
-                            .font(DS.font.caption)
+                            .font(DS.font.captionMedium)
                             .foregroundStyle(DS.color.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: 76, alignment: .trailing)
+                            .frame(maxWidth: 116, alignment: .leading)
                         Rectangle()
-                            .fill(DS.color.hairline)
+                            .fill(DS.color.border)
                             .frame(width: 1, height: 12)
                     }
 
@@ -224,10 +238,11 @@ struct TabChipView: View {
 
     private var background: Color {
         if isActive { return DS.color.elevated }
-        return isHovering ? DS.color.rowHover : .clear
+        // 非激活也要有底：一排标签全透明时彼此没有边界，四个长标题会连成一条读不出来。
+        return isHovering ? DS.color.rowHover : DS.color.field.opacity(0.55)
     }
 
     private var borderColor: Color {
-        isActive ? DS.color.border : .clear
+        isActive ? DS.color.border : DS.color.hairline
     }
 }

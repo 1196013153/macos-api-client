@@ -106,8 +106,10 @@ struct RequestEditorView: View {
                 .frame(width: 76)
             }
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        // borderlessButton 会自带一个**左置**的箭头，且 menuIndicator(.hidden) 管不住它；
+        // 改用 .button + plain，箭头由 label 自己画在右边。
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .fixedSize()
         .help("请求方法")
         .animation(DS.motion.select, value: session.buffer.method)

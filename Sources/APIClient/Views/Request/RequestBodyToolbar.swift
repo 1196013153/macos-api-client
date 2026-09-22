@@ -29,8 +29,10 @@ struct RequestBodyToolbar: View {
                 accent: { $0.accent },
                 selection: kindBinding
             )
-            // 挤进分区行后宽度有限，放不下就由 ChipTabBar 自己横向滚并把当前项滚进视野。
-            .frame(width: 258)
+            // 五个方式并排的实际宽度。chip 带图标且 fixedSize（不压缩），
+            // 给不够不会变窄、只会被裁成半截字（Form-data → Form）。
+            // 窗口窄到装不下时由 ChipTabBar 自己横向滚，并把当前项滚进视野。
+            .frame(width: 480)
             .help(kind.fullTitle)
 
             validationChip
@@ -78,15 +80,23 @@ struct RequestBodyToolbar: View {
         session.bodyValidation = valid
     }
 
-    /// 合法与否只用一个图标表示，文字说明放 tooltip——这一行的横向空间要让给分区标签。
+    /// 校验结果。图标带一个词，光看绿勾不知道它在说哪件事。
     @ViewBuilder
     private var validationChip: some View {
         if let isValid = session.bodyValidation {
-            AppIcon(
-                symbol: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                size: 11,
-                tint: isValid ? DS.color.success : DS.color.warning
-            )
+            HStack(spacing: DS.space.xs) {
+                AppIcon(
+                    symbol: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                    size: 10,
+                    tint: isValid ? DS.color.success : DS.color.warning
+                )
+                Text(isValid ? "合法" : "有误")
+                    .font(DS.font.caption)
+                    .foregroundStyle(isValid ? DS.color.success : DS.color.warning)
+            }
+            .padding(.horizontal, DS.space.sm)
+            .padding(.vertical, 1.5)
+            .background(isValid ? DS.color.successSoft : DS.color.warningSoft, in: Capsule())
             .help(isValid ? "JSON 合法" : "JSON 格式有误，发送时仍会按原文发出")
             .transition(.scale(scale: 0.9).combined(with: .opacity))
             .animation(DS.motion.select, value: isValid)

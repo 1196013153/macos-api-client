@@ -121,8 +121,10 @@ struct RootView: View {
             .background(tone.opacity(0.12), in: Capsule())
             .overlay(Capsule().strokeBorder(tone.opacity(0.35), lineWidth: 1))
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        // borderlessButton 会自带一个**左置**的箭头，且 menuIndicator(.hidden) 管不住它；
+        // 改用 .button + plain，箭头由 label 自己画在右边。
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .fixedSize()
         .help(environmentHelp(project: project))
         .animation(DS.motion.select, value: environment?.id)
