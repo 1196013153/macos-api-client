@@ -3,13 +3,13 @@ import ApiClientCore
 
 /// 当前项目的请求标签条。
 ///
-/// 项目切换由顶层 `ProjectTabBar` 负责；这里不再混入其他项目的标签，
-/// 也不再用项目名前缀区分不同项目。
+/// 项目 tab 和接口 tab 是父子关系：`ProjectTabBar` 切项目，
+/// 这里只显示当前项目自己的接口标签，其他项目的标签不会混进来。
 struct TabStripView: View {
     @Environment(AppStore.self) private var store
     @Environment(UIState.self) private var ui
 
-    private var orderedSessions: [TabSession] { store.allOrderedSessions }
+    private var orderedSessions: [TabSession] { store.visibleSessions }
     private var tabIDs: [UUID] { orderedSessions.map(\.id) }
 
 
