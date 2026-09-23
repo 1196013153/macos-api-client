@@ -10,10 +10,15 @@ struct WorkspaceView: View {
             // 对着真实接口调试时，「发错环境」是真实事故，一条色带是最低成本的护栏。
             EnvironmentRail()
 
-            // 只有一条标签条：所有项目的标签排在一起，用项目名前缀区分。
-            // 原先顶层还有一条项目标签行，信息量不足以换一整行高度。
-            // 标签条与内容之间不再画线：激活标签要和下面连成一片，
-            // 一条横线会把它拦腰截断。深浅色差已经足够分隔。
+            // 两层标签：项目层负责项目切换，接口层只看当前项目的请求。
+            // 多项目时标签不再靠“项目名前缀”区分；单项目时项目层自动隐藏。
+            if store.projectsWithTabs.count > 1 {
+                ProjectTabBar()
+                Rectangle()
+                    .fill(DS.color.hairline)
+                    .frame(height: 1)
+            }
+
             TabStripView()
             content
         }

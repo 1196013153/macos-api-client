@@ -62,7 +62,7 @@ struct RequestEditorView: View {
             moreMenu
         }
         .padding(.horizontal, DS.space.lg)
-        .padding(.vertical, DS.space.md)
+        .padding(.vertical, DS.space.sm)
         .background(DS.color.surface)
     }
 
@@ -80,7 +80,7 @@ struct RequestEditorView: View {
             resolvedURLLabel
         }
         .padding(.horizontal, DS.space.md)
-        .frame(height: 30)
+        .frame(height: 29)
         .background(shape.fill(isURLFocused ? DS.color.fieldFocused : DS.color.field))
         .overlay(shape.strokeBorder(isURLFocused ? DS.color.brand : DS.color.hairline, lineWidth: 1))
         .animation(DS.motion.hover, value: isURLFocused)
@@ -96,7 +96,7 @@ struct RequestEditorView: View {
                 }
             }
         } label: {
-            HoverChip(isActive: true, accent: session.buffer.method.tint, height: 30) {
+            HoverChip(isActive: true, accent: session.buffer.method.tint, height: 29) {
                 HStack(spacing: DS.space.xs) {
                     Text(session.buffer.method.rawValue)
                         .font(DS.font.methodPicker)
@@ -141,7 +141,7 @@ struct RequestEditorView: View {
                 kind: .prominent,
                 size: .regular,
                 tint: session.isSending ? DS.color.danger : nil,
-                height: 30
+                height: 29
             )
         )
         .keyboardShortcut(.return, modifiers: .command)
