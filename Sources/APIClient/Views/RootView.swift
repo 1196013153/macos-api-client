@@ -178,7 +178,7 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
+        ToolbarItemGroup(placement: .secondaryAction) {
             commandPaletteButton
 
             if let project = store.activeProject {
