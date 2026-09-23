@@ -13,6 +13,16 @@ enum FileDialogs {
         return panel.runModal() == .OK ? panel.url : nil
     }
 
+    static func openDirectory(message: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = message
+        panel.prompt = "选择文件夹"
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     static func saveJSON(defaultName: String) -> URL? {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]

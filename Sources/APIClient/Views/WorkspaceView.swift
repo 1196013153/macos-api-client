@@ -6,16 +6,20 @@ struct WorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶层项目标签：只在「同时打开了多个项目」时出现。
-            // 只开了一个项目就退化为一层，省掉没有信息量的一行。
+            // 环境色轨：测试绿 / 预发黄 / 生产红。
+            // 对着真实接口调试时，「发错环境」是真实事故，一条色带是最低成本的护栏。
+            EnvironmentRail()
+
+            // 两层标签：项目层负责项目切换，接口层只看当前项目的请求。
+            // 多项目时标签不再靠“项目名前缀”区分；单项目时项目层自动隐藏。
             if store.projectsWithTabs.count > 1 {
                 ProjectTabBar()
-                hairline
+                Rectangle()
+                    .fill(DS.color.hairline)
+                    .frame(height: 1)
             }
 
-            // 下层是当前项目自己的请求标签。
             TabStripView()
-            hairline
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

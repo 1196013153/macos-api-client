@@ -9,7 +9,6 @@ struct RequestEditorView: View {
     let session: TabSession
 
     @FocusState private var isURLFocused: Bool
-    @FocusState private var isNameFocused: Bool
 
     private var project: Project? { store.project(id: session.projectID) }
 
@@ -28,14 +27,13 @@ struct RequestEditorView: View {
         VStack(spacing: 0) {
             urlBar
             hairline
-            metaBar
-            hairline
             SectionTabBar(
                 items: RequestPane.allCases,
                 title: { $0.title },
                 badge: { badge(for: $0) },
                 accent: { accent(for: $0) },
-                selection: pane
+                selection: pane,
+                trailing: { paneToolbar }
             )
             .background(DS.color.surface)
 
@@ -58,17 +56,34 @@ struct RequestEditorView: View {
     private var urlBar: some View {
         HStack(spacing: DS.space.md) {
             methodMenu
+            addressField
+            sendButton
+            favoriteToggle
+            moreMenu
+        }
+        .padding(.horizontal, DS.space.lg)
+        .padding(.vertical, DS.space.sm)
+        .background(DS.color.surface)
+    }
 
+    /// 地址框：左边是「我写的」，右边灰字是「实际发出的」。
+    /// 两者同框对照，省掉原先那条只为显示解析结果而存在的元信息栏。
+    private var addressField: some View {
+        let shape = RoundedRectangle(cornerRadius: DS.radius.sm, style: .continuous)
+        return HStack(spacing: DS.space.md) {
             TextField("输入请求地址，支持 {{变量}} 与 /api/user/:id 路径参数", text: urlBinding)
-                .fieldChrome(isFocused: isURLFocused, height: 30, monospaced: true)
+                .textFieldStyle(.plain)
+                .font(DS.font.mono)
                 .focused($isURLFocused)
                 .onSubmit { send() }
 
-            sendButton
+            resolvedURLLabel
         }
-        .padding(.horizontal, DS.space.lg)
-        .padding(.vertical, DS.space.md)
-        .background(DS.color.surface)
+        .padding(.horizontal, DS.space.md)
+        .frame(height: 29)
+        .background(shape.fill(isURLFocused ? DS.color.fieldFocused : DS.color.field))
+        .overlay(shape.strokeBorder(isURLFocused ? DS.color.brand : DS.color.hairline, lineWidth: 1))
+        .animation(DS.motion.hover, value: isURLFocused)
     }
 
     private var methodMenu: some View {
@@ -81,7 +96,7 @@ struct RequestEditorView: View {
                 }
             }
         } label: {
-            HoverChip(isActive: true, accent: session.buffer.method.tint, height: 30) {
+            HoverChip(isActive: true, accent: session.buffer.method.tint, height: 29) {
                 HStack(spacing: DS.space.xs) {
                     Text(session.buffer.method.rawValue)
                         .font(DS.font.methodPicker)
@@ -91,8 +106,10 @@ struct RequestEditorView: View {
                 .frame(width: 76)
             }
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        // borderlessButton 会自带一个**左置**的箭头，且 menuIndicator(.hidden) 管不住它；
+        // 改用 .button + plain，箭头由 label 自己画在右边。
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .fixedSize()
         .help("请求方法")
         .animation(DS.motion.select, value: session.buffer.method)
@@ -124,7 +141,7 @@ struct RequestEditorView: View {
                 kind: .prominent,
                 size: .regular,
                 tint: session.isSending ? DS.color.danger : nil,
-                height: 30
+                height: 29
             )
         )
         .keyboardShortcut(.return, modifiers: .command)
@@ -134,6 +151,22 @@ struct RequestEditorView: View {
                 : (isMocking ? "发送（⌘↵）—— 该接口开着 Mock，不会发出真实网络请求" : "发送请求（⌘↵）")
         )
         .animation(DS.motion.select, value: session.isSending)
+    }
+
+    // MARK: 分区工具条
+
+    /// 分区标签行右侧：只放当前分区真正需要的操作。
+    /// 请求体的方式条原先自己占一整行，现在并到这里。
+    @ViewBuilder
+    private var paneToolbar: some View {
+        switch session.activePane {
+        case .body:
+            RequestBodyToolbar(session: session)
+        case .mock:
+            mockChip
+        default:
+            EmptyView()
+        }
     }
 
     // MARK: 收藏
@@ -169,56 +202,6 @@ struct RequestEditorView: View {
                 : (isCurrentFavorite ? "取消收藏" : "收藏，置顶到侧边栏「收藏」区")
         )
         .animation(DS.motion.select, value: isCurrentFavorite)
-    }
-
-    // MARK: 操作栏
-
-    private var metaBar: some View {
-        HStack(spacing: DS.space.md) {
-            AppIcon(
-                symbol: session.isDraft ? "doc.badge.plus" : "doc.text",
-                size: 10,
-                tint: DS.color.textTertiary
-            )
-
-            TextField("请求名称", text: nameBinding)
-                .fieldChrome(isFocused: isNameFocused, height: 24, horizontalPadding: DS.space.sm)
-                .focused($isNameFocused)
-                .frame(width: 176)
-
-            favoriteToggle
-
-            if session.isDraft || session.isDirty {
-                Text(session.isDraft ? "草稿" : "未保存")
-                    .font(DS.font.micro)
-                    .foregroundStyle(DS.color.warning)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(DS.color.warningSoft, in: Capsule())
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
-            }
-
-            Spacer(minLength: DS.space.md)
-
-            previewChip
-
-            mockChip
-
-            if let project {
-                environmentMenu(project: project)
-            }
-
-            Button("保存") { _ = store.saveTab(tabID: session.id) }
-                .buttonStyle(AppButtonStyle(kind: .tinted, size: .small))
-                .disabled(!session.isDirty)
-                .help("保存当前标签（⌘S）")
-
-            moreMenu
-        }
-        .padding(.horizontal, DS.space.lg)
-        .frame(height: DS.metric.barHeight)
-        .background(DS.color.surface)
-        .animation(DS.motion.select, value: session.isDirty)
     }
 
     /// 常驻的 Mock 开关：不切到 Mock 分区也能一眼看到当前状态、一键切换。
@@ -276,8 +259,9 @@ struct RequestEditorView: View {
         }
     }
 
+    /// 解析后的真实地址。有未解析变量时转为警告色，点击复制。
     @ViewBuilder
-    private var previewChip: some View {
+    private var resolvedURLLabel: some View {
         if let resolved = store.previewURL(for: session), resolved.url != session.buffer.url {
             let hasUnresolved = !resolved.unresolved.isEmpty
             Button {
@@ -285,21 +269,20 @@ struct RequestEditorView: View {
                 NSPasteboard.general.setString(resolved.url, forType: .string)
                 store.setNotice("已复制实际请求地址")
             } label: {
-                HoverChip(isActive: hasUnresolved, accent: DS.color.warning, height: 24) {
-                    HStack(spacing: DS.space.xs) {
-                        AppIcon(
-                            symbol: hasUnresolved ? "exclamationmark.triangle" : "arrow.turn.down.right",
-                            size: 9,
-                            tint: hasUnresolved ? DS.color.warning : DS.color.textTertiary
-                        )
-                        Text(resolved.url)
-                            .font(DS.font.monoSmall)
-                            .foregroundStyle(hasUnresolved ? DS.color.warning : DS.color.textTertiary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .frame(maxWidth: 300, alignment: .trailing)
+                HStack(spacing: DS.space.xs) {
+                    AppIcon(
+                        symbol: hasUnresolved ? "exclamationmark.triangle.fill" : "arrow.turn.down.right",
+                        size: 9,
+                        tint: hasUnresolved ? DS.color.warning : DS.color.textSecondary
+                    )
+                    Text(resolved.url)
+                        .font(DS.font.monoSmall)
+                        .foregroundStyle(hasUnresolved ? DS.color.warning : DS.color.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
                 }
+                .frame(maxWidth: 260, alignment: .trailing)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .buttonStyle(.plain)
             .help(
@@ -310,46 +293,12 @@ struct RequestEditorView: View {
         }
     }
 
-    private func environmentMenu(project: Project) -> some View {        Menu {
-            Section("环境") {
-                ForEach(project.environments) { environment in
-                    Button {
-                        store.setActiveEnvironment(projectID: project.id, environmentID: environment.id)
-                    } label: {
-                        if environment.id == project.activeEnvironment?.id {
-                            Label(environment.name, systemImage: "checkmark")
-                        } else {
-                            Text(environment.name)
-                        }
-                    }
-                }
-            }
-            Divider()
-            Button("管理环境与变量…") { ui.sheet = .environment(project.id) }
-        } label: {
-            HoverChip {
-                HStack(spacing: DS.space.xs) {
-                    AppIcon(symbol: "globe", size: 10, tint: DS.color.textSecondary)
-                    Text(project.activeEnvironment?.name ?? "未选择环境")
-                        .font(DS.font.caption)
-                        .foregroundStyle(DS.color.textPrimary)
-                        .lineLimit(1)
-                    AppIcon(symbol: "chevron.down", size: 7, weight: .bold, tint: DS.color.textTertiary)
-                }
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help(
-            project.activeEnvironment?.baseURL.isEmpty == false
-                ? "baseURL: \(project.activeEnvironment?.baseURL ?? "")"
-                : "该环境未设置 baseURL"
-        )
-    }
-
     private var moreMenu: some View {
         Menu {
+            Button("保存") { _ = store.saveTab(tabID: session.id) }
+                .disabled(!session.isDirty)
+            Button("重命名…") { promptRename() }
+            Divider()
             if let requestID = session.requestID {
                 Button("在侧边栏中定位") {
                     store.locateInSidebar(projectID: session.projectID, requestID: requestID)
@@ -451,10 +400,23 @@ struct RequestEditorView: View {
             }
     }
 
+    /// 重命名。名称原先常驻在元信息栏里占一个输入框，但它是低频操作，
+    /// 改成按需弹出；标签双击、右键菜单走的也是这里。
+    private func promptRename() {
+        ui.ask(
+            title: "重命名请求",
+            placeholder: "请求名称",
+            initialValue: session.buffer.name
+        ) { newName in
+            let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            store.updateBuffer(tabID: session.id) { $0.name = trimmed }
+        }
+    }
+
     // MARK: 绑定
 
     private var urlBinding: Binding<String> { bufferBinding(\.url) }
-    private var nameBinding: Binding<String> { bufferBinding(\.name) }
     private var noteBinding: Binding<String> { bufferBinding(\.note) }
 
     private func bufferBinding(_ keyPath: WritableKeyPath<APIRequest, String>) -> Binding<String> {

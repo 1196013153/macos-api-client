@@ -1,15 +1,13 @@
 import SwiftUI
 import ApiClientCore
 
-/// 顶层「项目标签」条。
+/// 顶层项目标签条：每个打开了标签的项目一个 tab。
 ///
-/// 多项目同时打开时的分工：
-/// - **顶层（这里）**：每个有标签的项目一个 tab，同时可见。切项目 tab = 切项目，
-///   不覆盖任何其它项目的标签、编辑缓冲与响应。
-/// - **下层**（`TabStripView`）：当前项目自己的请求标签。
+/// 项目层和接口层职责不同，不能合在一条里：
+/// - 这里回答「我在哪些项目间切换」，切走后该项目标签、编辑缓冲、响应都保留；
+/// - 下面的 `TabStripView` 只显示当前项目的接口标签。
 ///
-/// 只有一个项目有标签时不显示这一层——多一行没有信息量，反而占地方。
-/// 项目 tab 按项目列表顺序排列（不按打开顺序），这样来回切位置不会跳。
+/// 只有一个项目有标签时不显示：单独一行只有一个 tab，没有信息量。
 struct ProjectTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(UIState.self) private var ui
@@ -27,7 +25,7 @@ struct ProjectTabBar: View {
                         }
                     }
                     .padding(.horizontal, DS.space.md)
-                    .padding(.vertical, DS.space.xs)
+                    .padding(.vertical, DS.space.sm)
                 }
                 .onChange(of: store.activeProjectID) { _, newValue in
                     guard let newValue else { return }
@@ -39,7 +37,7 @@ struct ProjectTabBar: View {
 
             Rectangle()
                 .fill(DS.color.hairline)
-                .frame(width: 1, height: 16)
+                .frame(width: 1, height: 14)
 
             HStack(spacing: DS.space.sm) {
                 AppIcon(symbol: "square.on.square", size: 10, tint: DS.color.textTertiary)
@@ -55,8 +53,9 @@ struct ProjectTabBar: View {
     }
 }
 
-/// 单个项目 tab。
-struct ProjectTabChip: View {
+/// 单个项目标签。徽标里始终显示该项目打开的标签数，
+/// 切走后用户仍能知道那里有几个请求。
+private struct ProjectTabChip: View {
     @Environment(AppStore.self) private var store
     @Environment(UIState.self) private var ui
 
@@ -79,7 +78,7 @@ struct ProjectTabChip: View {
             } label: {
                 HStack(spacing: DS.space.sm) {
                     RoundedRectangle(cornerRadius: DS.radius.hair, style: .continuous)
-                        .fill(isActive ? DS.color.brand : DS.color.textTertiary.opacity(0.5))
+                        .fill(isActive ? DS.color.brand : DS.color.textTertiary.opacity(0.45))
                         .frame(width: 3, height: 12)
 
                     Text(project.name)
@@ -87,7 +86,7 @@ struct ProjectTabChip: View {
                         .foregroundStyle(isActive ? DS.color.textPrimary : DS.color.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .frame(maxWidth: 150, alignment: .leading)
+                        .frame(maxWidth: 148, alignment: .leading)
 
                     Text("\(tabCount)")
                         .font(DS.font.micro)
@@ -99,7 +98,7 @@ struct ProjectTabChip: View {
                             in: Capsule()
                         )
                 }
-                .padding(.leading, DS.space.md)
+                .padding(.leading, DS.space.sm)
                 .frame(height: DS.metric.projectTabHeight)
                 .contentShape(Rectangle())
             }
@@ -125,7 +124,6 @@ struct ProjectTabChip: View {
         .help("切换到「\(project.name)」——该项目有 \(tabCount) 个标签，切过去仍停在原来的标签上")
     }
 
-    /// 右侧固定宽度状态位：未保存圆点｜悬停时变成「关闭该项目全部标签」。
     private var closeArea: some View {
         ZStack {
             if hasDirty, !isHovering {
@@ -149,6 +147,6 @@ struct ProjectTabChip: View {
 
     private var background: Color {
         if isActive { return DS.color.brandSoft }
-        return isHovering ? DS.color.rowHover : DS.color.field.opacity(0.6)
+        return isHovering ? DS.color.rowHover : DS.color.field.opacity(0.5)
     }
 }

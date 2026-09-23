@@ -94,6 +94,7 @@ struct ProjectDetailSheet: View {
                     VStack(alignment: .leading, spacing: DS.space.xxl) {
                         identitySection(project)
                         statSection(project)
+                        javaSyncSection(project)
                         storageSection(project)
                     }
                     .padding(DS.space.xxl)
@@ -206,6 +207,49 @@ struct ProjectDetailSheet: View {
             RoundedRectangle(cornerRadius: DS.radius.md, style: .continuous)
                 .strokeBorder(DS.color.hairline)
         )
+    }
+
+    private func javaSyncSection(_ project: Project) -> some View {
+        VStack(alignment: .leading, spacing: DS.space.md) {
+            SectionLabel(text: "Java 接口同步", detail: "查看当前项目绑定的源码目录与最近同步时间")
+
+            SurfaceCard {
+                VStack(alignment: .leading, spacing: DS.space.lg) {
+                    HStack(alignment: .top, spacing: DS.space.md) {
+                        AppIcon(symbol: "folder.badge.gearshape", size: 11, tint: DS.color.textSecondary)
+
+                        Text(project.javaSyncFolderPath ?? "未绑定 Java 项目目录")
+                            .font(DS.font.monoTiny)
+                            .foregroundStyle(project.javaSyncFolderPath == nil ? DS.color.textTertiary : DS.color.textPrimary)
+                            .textSelection(.enabled)
+                            .lineLimit(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let syncedAt = project.javaSyncedAt {
+                        Text("最近同步：\(syncedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(DS.font.caption)
+                            .foregroundStyle(DS.color.textSecondary)
+                    }
+
+                    if let path = project.javaSyncFolderPath {
+                        HStack(spacing: DS.space.sm) {
+                            Button("打开目录") {
+                                NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                            }
+                            .buttonStyle(AppButtonStyle(kind: .normal, size: .small))
+
+                            Button("复制路径") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(path, forType: .string)
+                                store.setNotice("已复制同步目录路径")
+                            }
+                            .buttonStyle(AppButtonStyle(kind: .normal, size: .small))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func storageSection(_ project: Project) -> some View {

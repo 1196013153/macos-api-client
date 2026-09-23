@@ -45,8 +45,10 @@ final class UIState {
     var sheet: Sheet?
     var prompt: Prompt?
     var confirm: Confirm?
-    /// ⌘K「搜索接口」：每按一次 +1，侧边栏据此把焦点移到搜索框。
+    /// ⌘F「在当前项目内搜索」：每按一次 +1，侧边栏据此把焦点移到搜索框。
     var searchFocusTicket = 0
+    /// ⌘K 命令面板：跨项目跳接口。
+    var commandPalette = false
 
     func ask(
         title: String,

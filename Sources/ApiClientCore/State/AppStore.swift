@@ -238,7 +238,17 @@ public final class AppStore {
         projects.filter { openTabCount(projectID: $0.id) > 0 }
     }
 
-    /// 该项目是否有未保存的标签（项目 tab 上的脏点）。
+    /// 全部标签，按项目列表顺序分组。
+    ///
+    /// 标签条是一层的：所有项目的标签排在同一条里，用项目名前缀区分。
+    /// 按项目顺序而不是打开顺序分组，来回切换时标签位置不会跳。
+    public var allOrderedSessions: [TabSession] {
+        projectsWithTabs.flatMap { project in
+            sessions.filter { $0.projectID == project.id }
+        }
+    }
+
+    /// 该项目是否有未保存的标签。
     public func hasDirtyTabs(projectID: UUID) -> Bool {
         sessions.contains { $0.projectID == projectID && $0.isDirty }
     }

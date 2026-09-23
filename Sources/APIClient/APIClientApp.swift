@@ -16,6 +16,9 @@ struct APIClientApp: App {
                 .onAppear { appDelegate.store = store }
         }
         .defaultSize(width: 1400, height: 900)
+        // 重设计里的顶部是紧凑工具条；系统 unified 标题栏会再垫出一层大标题，
+        // 视觉上和内容区断开。这里压成同高的小工具条，让它更像设计稿的一体顶栏。
+        .windowToolbarStyle(.unified)
         .commands { AppCommands(store: store, ui: ui) }
     }
 }
@@ -73,10 +76,15 @@ struct AppCommands: Commands {
 
             Divider()
 
-            Button("搜索接口…") {
-                ui.searchFocusTicket += 1
+            Button("跳转到接口…") {
+                ui.commandPalette = true
             }
             .keyboardShortcut("k", modifiers: .command)
+
+            Button("在当前项目内搜索") {
+                ui.searchFocusTicket += 1
+            }
+            .keyboardShortcut("f", modifiers: .command)
 
             Divider()
 

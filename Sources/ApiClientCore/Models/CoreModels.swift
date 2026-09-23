@@ -210,6 +210,8 @@ public struct APIRequest: Identifiable, Codable, Hashable, Sendable {
     public var note: String
     public var createdAt: Date
     public var updatedAt: Date
+    /// Java 项目同步生成的接口来源标记（文件#类#方法）。手工接口保持 nil。
+    public var sourceKey: String?
 
     public init(
         id: UUID = UUID(),
@@ -222,7 +224,8 @@ public struct APIRequest: Identifiable, Codable, Hashable, Sendable {
         mock: MockConfig = MockConfig(),
         note: String = "",
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        sourceKey: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -235,6 +238,7 @@ public struct APIRequest: Identifiable, Codable, Hashable, Sendable {
         self.note = note
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.sourceKey = sourceKey
     }
 
     // `mock` 是后加的字段：老项目文件里没有它，必须回落默认值而不是解码失败
@@ -252,6 +256,7 @@ public struct APIRequest: Identifiable, Codable, Hashable, Sendable {
         note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        sourceKey = try container.decodeIfPresent(String.self, forKey: .sourceKey)
     }
 
     /// 全新草稿：带一行空 Header，符合“新建就要能直接写”的直觉。

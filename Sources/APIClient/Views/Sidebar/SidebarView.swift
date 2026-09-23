@@ -88,7 +88,7 @@ struct SidebarView: View {
             HStack(spacing: DS.space.sm) {
                 AppIcon(symbol: "magnifyingglass", size: 11, tint: DS.color.textTertiary)
 
-                TextField("搜索接口（⌘K）", text: $searchText)
+                TextField("搜索本项目（⌘F）", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(DS.font.body)
                     .focused($isSearchFocused)
@@ -481,11 +481,12 @@ struct SidebarRowView: View {
             }
         } else {
             HStack(spacing: DS.space.sm) {
-                MethodBadge(method: row.method ?? .get, compact: true)
+                MethodRail(method: row.method ?? .get)
                 Text(row.node.name)
                     .font(DS.font.body)
                     .foregroundStyle(isSelected ? DS.color.textPrimary : DS.color.textSecondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
         }
     }

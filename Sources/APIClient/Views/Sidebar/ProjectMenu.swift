@@ -59,6 +59,8 @@ struct ProjectMenu: View {
                 guard let url = FileDialogs.openJSON(message: "选择 wac 工作区文件（多项目）或单个项目 JSON") else { return }
                 store.importProjects(from: url)
             }
+            divider
+
             action(title: "导出当前项目…", symbol: "square.and.arrow.up") {
                 guard let project = store.activeProject else { return }
                 onDismiss()

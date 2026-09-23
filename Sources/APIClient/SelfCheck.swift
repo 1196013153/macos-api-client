@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import ApiClientCore
 
 /// 无界面自检：`APIClient --self-check`
@@ -37,6 +38,8 @@ enum SelfCheck {
         checkRequestSearch()
         await checkProjectsAndTabs()
         checkWorkspaceImport()
+        checkEnvironmentTone()
+        await checkJavaSync()
 
         print(String(repeating: "─", count: 60))
         if failed == 0 {
@@ -1185,6 +1188,22 @@ enum SelfCheck {
         expectEqual("往前切是循环的", app.activeProjectID, projectB.id)
         expectEqual("切项目标签不丢任何标签", app.sessions.count, 2)
         expectEqual("两级结构下每个项目各有活动标签", app.activeTabByProject.count, 2)
+
+        // 标签条已经合成一层：所有项目的标签排在同一条里，按项目分组。
+        // 分组顺序取项目列表顺序而不是打开顺序，来回切换时标签位置不会跳。
+        let ordered = app.allOrderedSessions
+        expectEqual("单层标签条包含全部项目的标签", ordered.count, app.sessions.count)
+        check(
+            "标签按项目连续分组",
+            ordered.map(\.projectID) == ordered.map(\.projectID).reduce(into: [UUID]()) { acc, id in
+                if acc.last != id { acc.append(id) }
+            }.flatMap { id in ordered.filter { $0.projectID == id }.map(\.projectID) }
+        )
+        expectEqual(
+            "分组顺序跟随项目列表",
+            Array(Set(ordered.map(\.projectID))).count,
+            app.projectsWithTabs.count
+        )
         app.setActiveProject(id: projectA.id)
         check("切回项目A仍停在a1", app.activeSession?.requestID == requestA)
 
@@ -1365,6 +1384,203 @@ enum SelfCheck {
         late.appendStream(chunk: Data(), events: rich, elapsed: 3)
         session.receiveStream(late)
         expectEqual("停止后迟到的快照被忽略", session.response?.stream?.events.count, 1)
+    }
+
+    // MARK: - Java 项目接口同步
+
+    private static func checkJavaSync() async {
+        section("Java 项目接口同步")
+
+        guard let root = sandbox else { return }
+        let rootURL = root.appendingPathComponent("java-project")
+        let sourceDirectory = rootURL.appendingPathComponent("src/main/java/com/example")
+        try? FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        let controllerURL = sourceDirectory.appendingPathComponent("AccountController.java")
+        let controller = """
+        package com.example;
+
+        @RestController
+        @RequestMapping("/api/accounts")
+        public class AccountController {
+            /**
+             * 读取账户详情。
+             */
+            @GetMapping("/{id}")
+            public Account get(@PathVariable("id") String id,
+                               @RequestParam(value = "withProfile", required = false) Boolean withProfile,
+                               @RequestHeader("X-Tenant") String tenant,
+                               @RequestBody Account body) {
+                return body;
+            }
+
+            @PostMapping
+            // @ApiOperation(value = "创建账户")
+            @LoginAnnotation(requiredLogin = true)
+            public String create(@RequestBody Map<String, Object> payload) {
+                return "ok";
+            }
+        }
+        """
+        try? controller.write(to: controllerURL, atomically: true, encoding: .utf8)
+
+        let requestType = """
+        package com.example;
+
+        public class GoodsDetailRequest {
+            // @ApiModelProperty(value = "商品ID")
+            private String itemId;
+
+            /**
+             * 店铺类型：B-天猫，C-淘宝
+             */
+            private String shopType;
+
+            @ApiModelProperty(value = "场景")
+            private String scene;
+        }
+        """
+        let requestTypeURL = sourceDirectory.appendingPathComponent("GoodsDetailRequest.java")
+        try? requestType.write(to: requestTypeURL, atomically: true, encoding: .utf8)
+
+        let goodsController = """
+        package com.example;
+
+        @RestController
+        @RequestMapping("/goods")
+        public class GoodsController {
+            @GetMapping("/detail")
+            public String detail(GoodsDetailRequest request) {
+                return "ok";
+            }
+        }
+        """
+        let goodsControllerURL = sourceDirectory.appendingPathComponent("GoodsController.java")
+        try? goodsController.write(to: goodsControllerURL, atomically: true, encoding: .utf8)
+
+        do {
+            let interfaces = try JavaProjectScanner.scan(at: rootURL)
+            expectEqual("扫描 Controller 方法数", interfaces.count, 3)
+            let getter = interfaces.first { $0.name == "get" }
+            expectEqual("读取 GET 地址", getter?.url, "/api/accounts/{id}")
+            expectEqual("读取请求方法", getter?.method, .get)
+            check("路径参数", getter?.params.contains { $0.location == .path && $0.key == "id" } == true)
+            check("查询参数", getter?.params.contains { $0.location == .query && $0.key == "withProfile" } == true)
+            check("请求头参数", getter?.headers.contains { $0.key == "X-Tenant" } == true)
+            expectEqual("请求体类型", getter?.body.kind, .json)
+            check("方法注释进说明", getter?.note.hasPrefix("读取账户详情。") == true)
+            check("映射注解下方的注释也认", interfaces.first { $0.name == "create" }?.note.hasPrefix("创建账户") == true)
+
+            let goodsDetail = interfaces.first { $0.name == "detail" }
+            expectEqual("读取 POJO 请求地址", goodsDetail?.url, "/goods/detail")
+            check("展开 GET POJO 字段", goodsDetail?.params.contains { $0.key == "itemId" && $0.location == .query } == true)
+            check("展开 GET POJO 第二字段", goodsDetail?.params.contains { $0.key == "shopType" && $0.location == .query } == true)
+            check("不再保留 request 占位参数", goodsDetail?.params.contains { $0.key == "request" } == false)
+            check("注释掉的 @ApiModelProperty 也认", goodsDetail?.params.first { $0.key == "itemId" }?.note == "商品ID")
+            check("Javadoc 字段注释", goodsDetail?.params.first { $0.key == "shopType" }?.note == "店铺类型：B-天猫，C-淘宝")
+            check("注解字段注释", goodsDetail?.params.first { $0.key == "scene" }?.note == "场景")
+
+            let app = AppStore(storage: PersistenceStore(root: root.appendingPathComponent("java-store")))
+            let project = app.createProject(name: "Java 项目")
+            let manual = APIRequest(name: "手工接口", method: .get, url: "/manual")
+            app.updateProject(id: project.id) { $0.insert(manual, intoFolder: nil) }
+            await app.syncJavaInterfaces(projectID: project.id, folderURL: rootURL)
+            let synced = app.project(id: project.id)
+            expectEqual("同步后接口数量", synced?.requests.count, 4)
+            let first = synced?.requests.first { $0.sourceKey?.contains("get") == true }
+            check("同步 Controller 目录", synced?.collection.contains { $0.kind == .folder && $0.name == "AccountController" } == true)
+            check("手工接口保留", synced?.requests.contains { $0.name == "手工接口" } == true)
+            check("来源标记可匹配", first?.sourceKey == "src/main/java/com/example/AccountController.java#AccountController#get")
+
+            let updatedController = controller.replacingOccurrences(of: "\"/{id}\"", with: "\"/v2/{id}\"")
+            try updatedController.write(to: controllerURL, atomically: true, encoding: .utf8)
+            await app.syncJavaInterfaces(projectID: project.id, folderURL: rootURL)
+            let refreshed = app.project(id: project.id)
+            expectEqual("二次同步接口数量", refreshed?.requests.count, 4)
+            expectEqual("同一接口复用请求 id", refreshed?.requests.first { $0.sourceKey?.contains("get") == true }?.id, first?.id)
+            expectEqual("地址按源码更新", refreshed?.requests.first { $0.sourceKey?.contains("get") == true }?.url, "/api/accounts/v2/{id}")
+            check("记录绑定路径", refreshed?.javaSyncFolderPath == rootURL.path)
+            check("记录同步时间", refreshed?.javaSyncedAt != nil)
+
+            // 从别的工具导入的接口没有 sourceKey，只有 `Java: 类.方法` 备注。
+            // 重新扫描时应该认领并原地更新它，而不是再生成一份同名接口；
+            // 上一次同步已经生成的那份重复项则合并掉，打开的标签跟着改指。
+            let importedProject = app.createProject(name: "导入后同步")
+            let imported = APIRequest(
+                name: "商品详情",
+                method: .get,
+                url: "/goods/detail",
+                params: [KeyValueItem(key: "request")],
+                note: "商品详情\nJava: GoodsController.detail"
+            )
+            let generatedDuplicate = APIRequest(
+                name: "detail",
+                method: .get,
+                url: "/goods/detail",
+                params: [KeyValueItem(key: "request")],
+                sourceKey: "src/main/java/com/example/GoodsController.java#GoodsController#detail"
+            )
+            app.updateProject(id: importedProject.id) { project in
+                project.requests = [imported, generatedDuplicate]
+                project.collection = [
+                    CollectionNode.folder(name: "GoodsController", children: [
+                        CollectionNode.request(id: imported.id, name: imported.name),
+                        CollectionNode.request(id: generatedDuplicate.id, name: generatedDuplicate.name)
+                    ])
+                ]
+            }
+            app.openRequest(projectID: importedProject.id, requestID: generatedDuplicate.id)
+            await app.syncJavaInterfaces(projectID: importedProject.id, folderURL: rootURL)
+
+            let mergedProject = app.project(id: importedProject.id)
+            let adopted = mergedProject?.request(id: imported.id)
+            check("导入的接口原地更新", adopted?.params.contains { $0.key == "itemId" && $0.location == .query } == true)
+            check("导入的接口保留名字", adopted?.name == "商品详情")
+            check("导入的接口补上来源标记", adopted?.sourceKey?.hasSuffix("#GoodsController#detail") == true)
+            check("原有业务说明保留", adopted?.note.hasPrefix("商品详情\nJava: GoodsController.detail") == true)
+            check("重复的同步接口被合并", mergedProject?.requests.contains { $0.id == generatedDuplicate.id } == false)
+            check("合并后接口数量正确", mergedProject?.requests.count == 3)
+            check("集合树不再有重复节点", mergedProject?.collection.containedRequestIDs().count == 3)
+            check("标签改指保留下来的接口", app.sessions.contains { $0.requestID == imported.id })
+            check(
+                "重新扫描后标签参数立即刷新",
+                app.sessions.first { $0.requestID == imported.id }?.buffer.params.contains { $0.key == "itemId" } == true
+            )
+
+            await app.syncJavaInterfaces(projectID: importedProject.id, folderURL: rootURL)
+            let resynced = app.project(id: importedProject.id)
+            check("再次同步不重复生成", resynced?.requests.count == 3)
+            check(
+                "再次同步说明不叠加",
+                resynced?.request(id: imported.id)?.note
+                    == "商品详情\nJava: GoodsController.detail\n文件: src/main/java/com/example/GoodsController.java"
+            )
+        } catch {
+            check("扫描 Java Controller", false, detail: error.localizedDescription)
+        }
+    }
+
+    // MARK: - 环境语义色
+
+    private static func checkEnvironmentTone() {
+        section("环境语义色")
+
+        func tone(_ name: String, _ baseURL: String = "") -> Color {
+            EnvironmentTone.color(for: APIEnvironment(name: name, baseURL: baseURL))
+        }
+
+        expectEqual("生产判红", tone("生产环境"), DS.color.danger)
+        expectEqual("线上判红", tone("线上"), DS.color.danger)
+        expectEqual("prod 判红", tone("prod-cluster"), DS.color.danger)
+        expectEqual("预发判黄", tone("预发布"), DS.color.warning)
+        expectEqual("staging 判黄", tone("staging"), DS.color.warning)
+        expectEqual("测试判绿", tone("测试环境 3"), DS.color.success)
+        expectEqual("本地判绿", tone("local"), DS.color.success)
+        expectEqual("认不出用中性色", tone("环境甲"), DS.color.brand)
+        // 名字没写但域名写了，也要认出来——这是最容易踩的那种
+        expectEqual("按 baseURL 兜底判红", tone("默认", "https://api.prod.example.com"), DS.color.danger)
+
+        check("生产环境单独标记", EnvironmentTone.isProduction(APIEnvironment(name: "生产")))
+        check("测试环境不算生产", !EnvironmentTone.isProduction(APIEnvironment(name: "测试")))
     }
 
     // MARK: - 工作区导入

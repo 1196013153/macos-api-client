@@ -46,17 +46,21 @@ struct ResponsePanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            metaBar
+            // 状态（左）· 分区标签（中）· 当前分区的工具（右）合成一行。
+            // 原先状态条和分区标签各占一行，合并后省下整整 32px 给响应内容。
             if session.response != nil || session.isSending {
-                hairline
                 SectionTabBar(
                     items: ResponsePane.allCases,
                     title: { $0.title },
                     badge: { badge(for: $0) },
                     accent: { $0 == .body && session.response?.isMock == true ? DS.color.brand : nil },
-                    selection: pane
+                    selection: pane,
+                    leading: { statusGroup },
+                    trailing: { paneTools }
                 )
                 .background(DS.color.surface)
+            } else {
+                idleBar
             }
             hairline
             content
@@ -66,10 +70,25 @@ struct ResponsePanelView: View {
         .animation(DS.motion.enter, value: stateKey)
     }
 
-    // MARK: 状态条
+    // MARK: 状态与工具
 
-    private var metaBar: some View {
-        HStack(spacing: DS.space.lg) {
+    /// 还没有响应时的一条轻提示。没有分区可切，就不摆整行标签。
+    private var idleBar: some View {
+        HStack(spacing: DS.space.sm) {
+            Text("等待发送")
+                .font(DS.font.caption)
+                .foregroundStyle(DS.color.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DS.space.lg)
+        .frame(height: DS.metric.barHeight)
+        .background(DS.color.surface)
+    }
+
+    /// 分区行最左：状态码、耗时、大小这类「发送后第一眼要看」的信息。
+    @ViewBuilder
+    private var statusGroup: some View {
+        HStack(spacing: DS.space.md) {
             if let payload = session.response {
                 StatusBadge(
                     code: payload.statusCode,
@@ -119,7 +138,7 @@ struct ResponsePanelView: View {
                         .font(DS.font.monoTiny)
                         .foregroundStyle(DS.color.textTertiary)
                         .lineLimit(1)
-                        .frame(maxWidth: 190, alignment: .leading)
+                        .frame(maxWidth: 120, alignment: .leading)
                 }
 
                 if let finalURL = payload.finalURL, finalURL.absoluteString != payload.requestURL {
@@ -131,19 +150,22 @@ struct ResponsePanelView: View {
                     }
                     .help(finalURL.absoluteString)
                 }
-            } else {
+            } else if session.isSending {
                 HStack(spacing: DS.space.sm) {
-                    if session.isSending {
-                        SpinnerDot(size: 11)
-                    }
-                    Text(session.isSending ? "请求中…" : "等待发送")
+                    SpinnerDot(size: 11)
+                    Text("请求中…")
                         .font(DS.font.caption)
                         .foregroundStyle(DS.color.textSecondary)
                 }
             }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
 
-            Spacer(minLength: DS.space.md)
-
+    /// 分区行最右：当前分区自己的操作。原文/树形、字段筛选、展开层级、复制。
+    @ViewBuilder
+    private var paneTools: some View {
+        HStack(spacing: DS.space.md) {
             if let payload = session.response, payload.jsonValue != nil, session.responsePane == .body {
                 Picker("", selection: bodyMode) {
                     ForEach(ResponseBodyMode.allCases) { mode in
@@ -177,7 +199,7 @@ struct ResponsePanelView: View {
                         }
                     }
                     .padding(.horizontal, DS.space.sm)
-                    .frame(width: 150, height: 22)
+                    .frame(width: 132, height: 22)
                     .background(DS.color.field, in: RoundedRectangle(cornerRadius: DS.radius.sm, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: DS.radius.sm, style: .continuous)
@@ -222,9 +244,7 @@ struct ResponsePanelView: View {
                 .help("复制为 cURL")
             }
         }
-        .padding(.horizontal, DS.space.lg)
-        .frame(height: DS.metric.barHeight)
-        .background(DS.color.surface)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: 内容分发
@@ -359,7 +379,7 @@ struct ResponsePanelView: View {
                     .id("\(session.id)-\(stateKey)")
                     .transition(.opacity)
             case .raw:
-                rawText(payload.text ?? "", language: .json)
+                rawText(formattedRawText(payload), language: .json)
             }
         } else if let text = payload.text {
             rawText(text, language: .plain)
@@ -370,6 +390,11 @@ struct ResponsePanelView: View {
                 subtitle: "共 \(payload.sizeText)，可在「请求详情」复制 cURL 用终端排查"
             )
         }
+    }
+
+    /// 原文模式下的展示文本：JSON 保序格式化，其他内容按服务端原文展示。
+    private func formattedRawText(_ payload: HTTPResponsePayload) -> String {
+        payload.jsonValue?.prettyPrinted() ?? (payload.text ?? "")
     }
 
     /// 原文视图：用只读的代码编辑器，JSON 会带高亮；横向滚动交给 NSTextView，不折行。
