@@ -18,10 +18,10 @@ struct RootView: View {
                 )
         } detail: {
             WorkspaceView()
+                .toolbar { toolbarContent }
         }
-        .navigationTitle(store.activeProject?.name ?? "API Client")
-        .navigationSubtitle(subtitle)
-        .toolbar { toolbarContent }
+        .navigationTitle("")
+        .navigationSubtitle("")
         .sheet(item: $ui.sheet) { sheet in
             switch sheet {
             case .environment(let projectID):
@@ -35,11 +35,7 @@ struct RootView: View {
         .sheet(item: $ui.prompt) { prompt in
             PromptSheet(prompt: prompt) { ui.prompt = nil }
         }
-        .sheet(isPresented: $ui.commandPalette) {
-            CommandPalette()
-                .environment(store)
-                .environment(ui)
-        }
+
         .alert(
             ui.confirm?.title ?? "",
             isPresented: Binding(
@@ -84,7 +80,7 @@ struct RootView: View {
 
     /// 命令面板入口。只有菜单项和快捷键的话没人会发现它，
     /// 而这正是两千多个接口里最该被用到的那个功能。
-    private var commandPaletteButton: some View {
+    private func commandPaletteButton(isPresented: Binding<Bool>) -> some View {
         Button {
             ui.commandPalette = true
         } label: {
@@ -110,6 +106,11 @@ struct RootView: View {
         }
         .buttonStyle(.plain)
         .help("跨全部项目搜接口并跳转（⌘K）")
+        .popover(isPresented: isPresented, arrowEdge: .bottom) {
+            CommandPalette()
+                .environment(store)
+                .environment(ui)
+        }
     }
 
     /// 环境切换。原先挂在请求编辑区的元信息栏里，但环境是**项目级**设置：
@@ -168,60 +169,58 @@ struct RootView: View {
         return EnvironmentTone.isProduction(environment) ? "⚠️ 当前是生产环境 · \(base)" : base
     }
 
-    /// 侧边栏顶部已经写了项目名与接口数，环境也已在工具栏常驻，
-    /// 这里只补一句它们没说的：打开了多少标签。
-    private var subtitle: String {
-        guard store.activeProject != nil else { return "尚未创建项目" }
-        let count = store.sessions.count
-        return count == 0 ? "没有打开的标签" : "\(count) 个标签"
-    }
-
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .secondaryAction) {
-            commandPaletteButton
+        let commandPaletteBinding = Binding<Bool>(
+            get: { ui.commandPalette },
+            set: { ui.commandPalette = $0 }
+        )
+        ToolbarItem(placement: .primaryAction) {
+            HStack(spacing: DS.space.sm) {
+                commandPaletteButton(isPresented: commandPaletteBinding)
 
-            if let project = store.activeProject {
-                environmentMenu(project: project)
-            }
-
-            Button {
-                guard let id = store.activeProjectID,
-                      let url = FileDialogs.openDirectory(message: "选择 Java / Spring 项目根目录") else { return }
-                Task { await store.syncJavaInterfaces(projectID: id, folderURL: url) }
-            } label: {
-                AppIcon(symbol: "folder.badge.plus", size: 13, tint: DS.color.textSecondary)
-            }
-            .help("绑定 Java 项目并同步接口")
-            .disabled(store.activeProjectID == nil)
-
-            Button {
-                guard let project = store.activeProject,
-                      let path = project.javaSyncFolderPath else { return }
-                Task { await store.syncJavaInterfaces(projectID: project.id, folderURL: URL(fileURLWithPath: path)) }
-            } label: {
-                AppIcon(symbol: "arrow.clockwise", size: 13, tint: DS.color.textSecondary)
-            }
-            .help("重新同步 Java 项目接口")
-            .disabled(store.activeProject?.javaSyncFolderPath == nil)
-
-            Button {
-                if let id = store.activeProjectID {
-                    ui.sheet = .requestDetail(id)
+                if let project = store.activeProject {
+                    environmentMenu(project: project)
                 }
-            } label: {
-                AppIcon(symbol: "info.circle", size: 13, tint: DS.color.textSecondary)
-            }
-            .help("当前项目信息")
-            .disabled(store.activeProjectID == nil)
 
-            Button {
-                ui.sheet = .settings
-            } label: {
-                AppIcon(symbol: "gearshape", size: 13, tint: DS.color.textSecondary)
+                Button {
+                    guard let id = store.activeProjectID,
+                          let url = FileDialogs.openDirectory(message: "选择 Java / Spring 项目根目录") else { return }
+                    Task { await store.syncJavaInterfaces(projectID: id, folderURL: url) }
+                } label: {
+                    AppIcon(symbol: "folder.badge.plus", size: 13, tint: DS.color.textSecondary)
+                }
+                .help("绑定 Java 项目并同步接口")
+                .disabled(store.activeProjectID == nil)
+
+                Button {
+                    guard let project = store.activeProject,
+                          let path = project.javaSyncFolderPath else { return }
+                    Task { await store.syncJavaInterfaces(projectID: project.id, folderURL: URL(fileURLWithPath: path)) }
+                } label: {
+                    AppIcon(symbol: "arrow.clockwise", size: 13, tint: DS.color.textSecondary)
+                }
+                .help("重新同步 Java 项目接口")
+                .disabled(store.activeProject?.javaSyncFolderPath == nil)
+
+                Button {
+                    if let id = store.activeProjectID {
+                        ui.sheet = .requestDetail(id)
+                    }
+                } label: {
+                    AppIcon(symbol: "info.circle", size: 13, tint: DS.color.textSecondary)
+                }
+                .help("当前项目信息")
+                .disabled(store.activeProjectID == nil)
+
+                Button {
+                    ui.sheet = .settings
+                } label: {
+                    AppIcon(symbol: "gearshape", size: 13, tint: DS.color.textSecondary)
+                }
+                .help("设置（超时、TLS、数据目录）")
+                .keyboardShortcut(",", modifiers: .command)
             }
-            .help("设置（超时、TLS、数据目录）")
-            .keyboardShortcut(",", modifiers: .command)
         }
     }
 }

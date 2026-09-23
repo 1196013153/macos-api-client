@@ -18,7 +18,7 @@ struct APIClientApp: App {
         .defaultSize(width: 1400, height: 900)
         // 重设计里的顶部是紧凑工具条；系统 unified 标题栏会再垫出一层大标题，
         // 视觉上和内容区断开。这里压成同高的小工具条，让它更像设计稿的一体顶栏。
-        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+        .windowToolbarStyle(.unified)
         .commands { AppCommands(store: store, ui: ui) }
     }
 }
