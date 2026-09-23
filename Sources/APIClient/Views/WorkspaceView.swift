@@ -12,10 +12,12 @@ struct WorkspaceView: View {
 
             // 两层标签：项目层负责项目切换，接口层只看当前项目的请求。
             // 多项目时标签不再靠“项目名前缀”区分；单项目时项目层自动隐藏。
-            ProjectTabBar()
-            Rectangle()
-                .fill(DS.color.hairline)
-                .frame(height: 1)
+            if !store.projectsWithTabs.isEmpty {
+                ProjectTabBar()
+                Rectangle()
+                    .fill(DS.color.hairline)
+                    .frame(height: 1)
+            }
 
             TabStripView()
             content

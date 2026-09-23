@@ -7,12 +7,12 @@ import ApiClientCore
 /// - 这里回答「我在哪些项目间切换」，切走后该项目标签、编辑缓冲、响应都保留；
 /// - 下面的 `TabStripView` 只显示当前项目的接口标签。
 ///
-/// 项目 tab 常驻，用于多项目快速切换；不依赖该项目是否已有打开标签。
+/// 只显示有打开标签的项目；没有标签时这一层整体隐藏，不占顶部空间。
 struct ProjectTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(UIState.self) private var ui
 
-    private var projects: [Project] { store.projects }
+    private var projects: [Project] { store.projectsWithTabs }
 
     var body: some View {
         HStack(spacing: 0) {
